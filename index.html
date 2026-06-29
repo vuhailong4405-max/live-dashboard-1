@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Live Realtime Dashboard V8 - KPI & History</title>
+  <title>Live Realtime Dashboard V10 - Cloud Database Flow</title>
   <style>
     :root{
       --bg:#f5f6fb;
@@ -220,7 +220,7 @@
       <button style="width:100%;margin-top:6px" onclick="login()">Đăng nhập</button>
       <div class="warning-note">
         Tài khoản test: <b>admin / live123</b>, <b>host1 / 123456</b>, <b>tro1 / 123456</b>.<br/>
-        Bản này lưu dữ liệu bằng LocalStorage để demo. Admin có thể thêm kênh bán mới trong giao diện. Muốn nhiều máy cùng truy cập bằng 1 link và dùng chung dữ liệu realtime, cần deploy lên hosting và nối Firebase/Supabase/server.
+        Bản Cloud: dữ liệu sẽ đồng bộ giữa nhiều máy khi bạn điền firebaseConfig. Nếu chưa điền Firebase, hệ thống tự chạy chế độ LocalStorage dự phòng.
       </div>
     </div>
   </section>
@@ -355,8 +355,8 @@
       <section id="view-history" class="view">
         <div class="section-head">
           <div>
-            <h2>Lịch sử chỉnh sửa</h2>
-            <p>Lưu lại từng lần sửa ca live và sửa báo cáo: ai sửa, sửa lúc nào, sửa nội dung gì.</p>
+            <h2>Lịch sử chỉnh sửa & lưu trữ database</h2>
+            <p>Lưu lại từng lần sửa ca live, sửa báo cáo, thay đổi tài khoản và toàn bộ thông tin nhân viên nhập.</p>
           </div>
         </div>
         <div id="historyWrap"></div>
@@ -401,7 +401,7 @@
       <div class="modal-head">
         <div>
           <h3 id="accountModalTitle">Tạo tài khoản</h3>
-          <div class="meta">Tài khoản được lưu trong database demo LocalStorage</div>
+          <div class="meta">Tài khoản được lưu trong database cloud Firestore khi đã cấu hình Firebase</div>
         </div>
         <button class="close" onclick="closeModal('accountModal')">×</button>
       </div>
@@ -631,9 +631,36 @@
 
   <div id="toast" class="toast"></div>
 
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
+
   <script>
     const DB_KEY = "live_realtime_dashboard_v3";
     const SESSION_KEY = "live_realtime_user_v3";
+
+    // ================= FIREBASE CLOUD DATABASE =================
+    // BƯỚC BẮT BUỘC: thay các giá trị dưới đây bằng firebaseConfig của dự án Firebase của bạn.
+    // Vào Firebase Console > Project settings > Your apps > Web app > SDK setup and configuration.
+    const firebaseConfig = {
+      apiKey: "DAN_API_KEY_CUA_BAN",
+      authDomain: "DAN_PROJECT_ID.firebaseapp.com",
+      projectId: "DAN_PROJECT_ID",
+      storageBucket: "DAN_PROJECT_ID.appspot.com",
+      messagingSenderId: "DAN_MESSAGING_SENDER_ID",
+      appId: "DAN_APP_ID"
+    };
+
+    const CLOUD_COLLECTION = "liveDashboard";
+    const CLOUD_DOC_ID = "main";
+    const CLOUD_EVENT_SUBCOLLECTION = "activityLogs";
+    let cloudReady = false;
+    let cloudDB = null;
+    let cloudStorage = null;
+    let cloudDocRef = null;
+    let cloudUnsubscribe = null;
+    let syncingFromCloud = false;
+    let saveTimer = null;
 
     let db = null;
     let currentUser = null;
@@ -670,6 +697,104 @@
       return [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,"0")).join("");
     }
 
+    function hasFirebaseConfig(){
+      return firebaseConfig
+        && firebaseConfig.apiKey
+        && !String(firebaseConfig.apiKey).includes("DAN_")
+        && firebaseConfig.projectId
+        && !String(firebaseConfig.projectId).includes("DAN_");
+    }
+
+    function initCloudDB(){
+      if(!hasFirebaseConfig()){
+        cloudReady = false;
+        return false;
+      }
+      try{
+        if(typeof firebase === "undefined") throw new Error("Firebase SDK chưa tải được");
+        if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        cloudDB = firebase.firestore();
+        cloudStorage = firebase.storage();
+        cloudDocRef = cloudDB.collection(CLOUD_COLLECTION).doc(CLOUD_DOC_ID);
+        cloudReady = true;
+        return true;
+      }catch(e){
+        console.error("Không khởi tạo được Firebase", e);
+        cloudReady = false;
+        return false;
+      }
+    }
+
+    function applyDbDefaults(){
+      if(!db) return;
+      if(!Array.isArray(db.accounts)) db.accounts = [];
+      if(!Array.isArray(db.shifts)) db.shifts = [];
+      if(!Array.isArray(db.notes)) db.notes = [];
+      if(!db.channels || !Array.isArray(db.channels)) db.channels = ["Gooby","Rouya","Lazy Mom","Cohee"];
+      if(!db.histories || !Array.isArray(db.histories)) db.histories = [];
+      if(!db.dataLogs || !Array.isArray(db.dataLogs)) db.dataLogs = [];
+      db.accounts.forEach(a=>{ if(a.kpiGmv === undefined) a.kpiGmv = 0; });
+      db.shifts.forEach(s=>{
+        if(!s.shop) s.shop = "Khác";
+        if(!s.host) s.host = {checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""};
+        if(!s.support) s.support = {checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""};
+      });
+    }
+
+    async function loadLocalDB(){
+      const raw = localStorage.getItem(DB_KEY);
+      if(!raw){
+        await seedDB();
+      }else{
+        try{ db = JSON.parse(raw); }
+        catch(e){ await seedDB(); }
+      }
+      applyDbDefaults();
+    }
+
+    function cloudStatusText(){
+      return cloudReady ? "Cloud Firestore: đang đồng bộ nhiều máy" : "LocalStorage: dữ liệu chỉ lưu trên máy này";
+    }
+
+    function startCloudRealtimeSync(){
+      if(!cloudReady || !cloudDocRef || cloudUnsubscribe) return;
+      cloudUnsubscribe = cloudDocRef.onSnapshot(snap=>{
+        if(!snap.exists) return;
+        const payload = snap.data() || {};
+        if(!payload.data) return;
+        const incoming = payload.data;
+        try{
+          if(JSON.stringify(incoming) === JSON.stringify(db)) return;
+        }catch(e){}
+        syncingFromCloud = true;
+        db = incoming;
+        applyDbDefaults();
+        try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
+        const userId = sessionStorage.getItem(SESSION_KEY);
+        currentUser = db.accounts.find(a=>a.id === userId) || null;
+        renderApp();
+        syncingFromCloud = false;
+      },err=>{
+        console.error("Lỗi realtime Firestore", err);
+        toast("Lỗi đồng bộ Firestore, kiểm tra Rules/Firebase config");
+      });
+    }
+
+    async function uploadCheckinPhotoToCloud(shiftId, role, dataUrl){
+      if(!cloudReady || !cloudStorage || !dataUrl) return dataUrl;
+      try{
+        const safeRole = role === "host" ? "host" : "support";
+        const path = `checkins/${shiftId}/${safeRole}_${Date.now()}.jpg`;
+        const photoRef = cloudStorage.ref(path);
+        const snapshot = await photoRef.putString(dataUrl, "data_url");
+        return await snapshot.ref.getDownloadURL();
+      }catch(e){
+        console.error("Không upload được ảnh check-in lên Storage", e);
+        toast("Không upload được ảnh lên Storage, tạm lưu ảnh trong dữ liệu");
+        return dataUrl;
+      }
+    }
+
     async function seedDB(){
       const admin = id(), host1 = id(), support1 = id(), host2 = id(), support2 = id();
       db = {
@@ -701,27 +826,71 @@
         ],
         notes:[],
         histories:[],
+        dataLogs:[],
         channels:["Gooby","Rouya","Lazy Mom","Cohee"]
       };
       saveDB();
     }
 
     async function loadDB(){
-      const raw = localStorage.getItem(DB_KEY);
-      if(!raw){
-        await seedDB();
+      initCloudDB();
+
+      if(cloudReady){
+        try{
+          const snap = await cloudDocRef.get();
+          if(snap.exists && snap.data() && snap.data().data){
+            db = snap.data().data;
+            applyDbDefaults();
+            localStorage.setItem(DB_KEY, JSON.stringify(db));
+          }else{
+            const raw = localStorage.getItem(DB_KEY);
+            if(raw){
+              try{ db = JSON.parse(raw); }
+              catch(e){ await seedDB(); }
+            }else{
+              await seedDB();
+            }
+            applyDbDefaults();
+            await saveDB({immediate:true});
+          }
+        }catch(e){
+          console.error("Không đọc được Firestore, chuyển sang LocalStorage", e);
+          cloudReady = false;
+          await loadLocalDB();
+        }
       }else{
-        try{ db = JSON.parse(raw); }
-        catch(e){ await seedDB(); }
+        await loadLocalDB();
       }
-      if(!db.channels || !Array.isArray(db.channels)) db.channels = ["Gooby","Rouya","Lazy Mom","Cohee"];
-      if(!db.histories || !Array.isArray(db.histories)) db.histories = [];
-      db.accounts.forEach(a=>{ if(a.kpiGmv === undefined) a.kpiGmv = 0; });
-      db.shifts.forEach(s=>{ if(!s.shop) s.shop = "Khác"; });
+
+      applyDbDefaults();
       const userId = sessionStorage.getItem(SESSION_KEY);
       currentUser = db.accounts.find(a=>a.id === userId) || null;
+      if(cloudReady) startCloudRealtimeSync();
     }
-    function saveDB(){ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
+
+    function saveDB(options={}){
+      if(!db) return Promise.resolve();
+      try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){ console.error("Không lưu được LocalStorage", e); }
+      if(!cloudReady || !cloudDocRef || syncingFromCloud) return Promise.resolve();
+
+      const write = () => cloudDocRef.set({
+        data: cloneData(db),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAtText: nowText(),
+        updatedBy: currentUser ? currentUser.name : "system"
+      }, {merge:true}).catch(err=>{
+        console.error("Không lưu được Firestore", err);
+        toast("Không lưu được lên Firestore, kiểm tra mạng/Rules");
+      });
+
+      if(options.immediate){
+        if(saveTimer){ clearTimeout(saveTimer); saveTimer = null; }
+        return write();
+      }
+      if(saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(write, 280);
+      return Promise.resolve();
+    }
 
     function toast(msg){
       const el = document.getElementById("toast");
@@ -773,9 +942,9 @@
       document.getElementById("loginPage").classList.add("hidden");
       document.getElementById("appPage").classList.remove("hidden");
       document.getElementById("currentUserPill").textContent = `${currentUser.name} · ${roleLabel(currentUser.role)}`;
-      document.getElementById("headerSubtitle").textContent = isAdmin()
+      document.getElementById("headerSubtitle").textContent = (isAdmin()
         ? "Admin quản lý tài khoản, đăng ký ca live, báo cáo realtime"
-        : "Nhân viên check-in để bắt đầu live, kết thúc để chốt thời gian thực tế";
+        : "Nhân viên check-in để bắt đầu live, kết thúc để chốt thời gian thực tế") + " · " + cloudStatusText();
       renderTabs();
       switchView(activeView);
     }
@@ -894,7 +1063,13 @@
       if(getChannels().some(ch=>ch.toLowerCase() === clean.toLowerCase())) return toast("Kênh bán đã tồn tại");
       db.channels.push(clean);
       selectedChannel = clean;
-      saveDB();
+      recordDatabaseEvent({
+        module:"channel",
+        action:"Thêm kênh bán",
+        after:{channel:clean},
+        details:{channel:clean}
+      });
+      saveDB({immediate:true});
       input.value = "";
       renderContent();
       renderChannelList();
@@ -940,7 +1115,13 @@
       if(!confirm(`Xóa kênh bán ${name}?`)) return;
       db.channels = getChannels().filter(ch=>ch !== name);
       if(selectedChannel === name) selectedChannel = "all";
-      saveDB();
+      recordDatabaseEvent({
+        module:"channel",
+        action:"Xóa kênh bán",
+        before:{channel:name},
+        details:{channel:name}
+      });
+      saveDB({immediate:true});
       renderContent();
       renderChannelList();
       toast("Đã xóa kênh bán");
@@ -1326,6 +1507,111 @@
       return true;
     }
 
+    function removeSensitiveAccountFields(account){
+      const a = cloneData(account || {});
+      if("passwordHash" in a) delete a.passwordHash;
+      return a;
+    }
+
+    function compactValue(value, maxLen=700){
+      const text = typeof value === "string" ? value : JSON.stringify(value ?? "");
+      if(text.length <= maxLen) return text;
+      return text.slice(0, maxLen) + "...";
+    }
+
+    function pushCloudActivityLog(log){
+      if(!cloudReady || !cloudDocRef || syncingFromCloud || !log) return;
+      try{
+        cloudDocRef.collection(CLOUD_EVENT_SUBCOLLECTION).doc(log.id).set(cloneData(log)).catch(err=>{
+          console.error("Không lưu được activity log lên Firestore", err);
+        });
+      }catch(e){
+        console.error("Không ghi được activity log", e);
+      }
+    }
+
+    function recordDatabaseEvent({module, action, shift=null, account=null, before=null, after=null, details=null, employeeInput=false}){
+      if(!db.dataLogs || !Array.isArray(db.dataLogs)) db.dataLogs = [];
+      const participantIds = [];
+      if(shift){
+        if(shift.hostId) participantIds.push(shift.hostId);
+        if(shift.supportId) participantIds.push(shift.supportId);
+      }
+      if(account?.id) participantIds.push(account.id);
+      const log = {
+        id:id(),
+        module:module || "system",
+        action:action || "Cập nhật dữ liệu",
+        employeeInput:!!employeeInput,
+        shiftId:shift?.id || "",
+        shiftLabel:shift ? shiftLabel(shift) : "",
+        accountId:account?.id || "",
+        accountName:account?.name || "",
+        participantIds:[...new Set(participantIds)],
+        before:before === undefined ? null : before,
+        after:after === undefined ? null : after,
+        details:details || null,
+        actorId:currentUser?.id || "system",
+        actorName:currentUser?.name || "system",
+        actorRole:currentUser ? roleLabel(currentUser.role) : "system",
+        time:nowText(),
+        ts:nowTs(),
+        storage:cloudReady ? "Firestore + LocalStorage cache" : "LocalStorage"
+      };
+      db.dataLogs.push(log);
+      // Giữ 1.500 log gần nhất trong document chính để tránh dữ liệu phình quá lớn.
+      if(db.dataLogs.length > 1500){
+        db.dataLogs = db.dataLogs.sort((a,b)=>Number(a.ts||0)-Number(b.ts||0)).slice(-1500);
+      }
+      pushCloudActivityLog(log);
+      return log;
+    }
+
+    function visibleDatabaseLogs(){
+      if(!db.dataLogs || !Array.isArray(db.dataLogs)) db.dataLogs = [];
+      const visibleShiftIds = new Set(visibleShifts().map(s=>s.id));
+      return db.dataLogs.filter(log=>{
+        if(isAdmin()) return true;
+        if(log.actorId === currentUser.id) return true;
+        if((log.participantIds || []).includes(currentUser.id)) return true;
+        if(log.shiftId && visibleShiftIds.has(log.shiftId)) return true;
+        return false;
+      }).sort((a,b)=>Number(b.ts||0)-Number(a.ts||0));
+    }
+
+    function renderDatabaseLogCards(){
+      const logs = visibleDatabaseLogs().slice(0,80);
+      return `
+        <div class="section-head" style="margin-top:22px">
+          <div>
+            <h2>Luồng database đã lưu</h2>
+            <p>Lưu tài khoản, ca live, check-in, kết thúc ca, ghi chú, báo cáo và dữ liệu nhân viên điền. Hiển thị 80 bản ghi mới nhất.</p>
+          </div>
+        </div>
+        ${logs.length ? `
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr><th>Thời gian</th><th>Người thao tác</th><th>Nhóm dữ liệu</th><th>Hành động</th><th>Dữ liệu liên quan</th><th>Trạng thái lưu</th></tr>
+              </thead>
+              <tbody>
+                ${logs.map(log=>`
+                  <tr>
+                    <td>${escapeHtml(log.time || "-")}</td>
+                    <td><strong>${escapeHtml(log.actorName || "-")}</strong><br/><span class="meta">${escapeHtml(log.actorRole || "")}</span></td>
+                    <td><span class="badge ${log.employeeInput ? "green" : "purple"}">${escapeHtml(log.module || "-")}</span></td>
+                    <td>${escapeHtml(log.action || "-")}</td>
+                    <td>${escapeHtml(log.shiftLabel || log.accountName || compactValue(log.details || "-", 120))}</td>
+                    <td>${escapeHtml(log.storage || "-")}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        ` : `<div class="empty">Chưa có log database nào.</div>`}
+      `;
+    }
+
     function visibleHistory(){
       if(!db.histories || !Array.isArray(db.histories)) db.histories = [];
       const shifts = visibleShifts();
@@ -1367,6 +1653,12 @@
             </div>
           </div>
         </div>
+        <div class="section-head" style="margin-top:0">
+          <div>
+            <h2>Lịch sử sửa ca & báo cáo</h2>
+            <p>So sánh dữ liệu trước và sau khi sửa.</p>
+          </div>
+        </div>
         ${histories.length ? histories.map(h=>`
           <div class="card" style="margin-bottom:14px">
             <div class="section-head" style="margin:0 0 12px">
@@ -1393,6 +1685,7 @@
             </div>
           </div>
         `).join("") : `<div class="empty">Chưa có lịch sử chỉnh sửa nào.</div>`}
+        ${renderDatabaseLogCards()}
       `;
     }
     function renderNoteOptions(){
@@ -1610,27 +1903,45 @@
 
       if(accountId){
         const a = db.accounts.find(x=>x.id===accountId);
+        const beforeAccount = removeSensitiveAccountFields(a);
         a.name = name;
         a.role = document.getElementById("accountRole").value;
         a.shop = document.getElementById("accountShop").value;
         a.status = document.getElementById("accountStatus").value;
         a.kpiGmv = kpiGmv;
+        const changedPassword = !!password;
         if(password) a.passwordHash = await hashPassword(password);
         db.shifts.forEach(s=>{
           if(s.hostId === a.id) s.hostName = a.name;
           if(s.supportId === a.id) s.supportName = a.name;
         });
+        recordDatabaseEvent({
+          module:"account",
+          action:"Sửa tài khoản nhân viên",
+          account:a,
+          before:beforeAccount,
+          after:{...removeSensitiveAccountFields(a), passwordChanged:changedPassword},
+          details:{username:a.username, kpiGmv:a.kpiGmv, passwordChanged:changedPassword}
+        });
       }else{
-        db.accounts.push({
+        const newAccount = {
           id:id(),name,username,passwordHash:await hashPassword(password),
           role:document.getElementById("accountRole").value,
           shop:document.getElementById("accountShop").value,
           status:document.getElementById("accountStatus").value,
           kpiGmv,
           createdAt:nowText()
+        };
+        db.accounts.push(newAccount);
+        recordDatabaseEvent({
+          module:"account",
+          action:"Tạo tài khoản nhân viên",
+          account:newAccount,
+          after:removeSensitiveAccountFields(newAccount),
+          details:{username:newAccount.username, role:newAccount.role, shop:newAccount.shop, kpiGmv:newAccount.kpiGmv}
         });
       }
-      saveDB();
+      saveDB({immediate:true});
       closeModal("accountModal");
       renderContent();
       toast("Đã lưu tài khoản");
@@ -1640,8 +1951,15 @@
       const a = db.accounts.find(x=>x.id===accountId);
       if(!a) return;
       if(!confirm(`Xóa tài khoản ${a.name}?`)) return;
+      recordDatabaseEvent({
+        module:"account",
+        action:"Xóa tài khoản nhân viên",
+        account:a,
+        before:removeSensitiveAccountFields(a),
+        details:{username:a.username, role:a.role, shop:a.shop}
+      });
       db.accounts = db.accounts.filter(x=>x.id!==accountId);
-      saveDB();
+      saveDB({immediate:true});
       renderContent();
       toast("Đã xóa tài khoản");
     }
@@ -1715,6 +2033,14 @@
           goal:s.goal || ""
         };
         Object.assign(s, base);
+        recordDatabaseEvent({
+          module:"shift",
+          action:"Sửa ca live",
+          shift:s,
+          before,
+          after:base,
+          details:{date:base.date, time:`${base.start}-${base.end}`, shop:base.shop}
+        });
         recordEditHistory({
           shift:s,
           type:"shift",
@@ -1724,7 +2050,7 @@
           fields:SHIFT_HISTORY_FIELDS
         });
       }else{
-        db.shifts.push({
+        const newShift = {
           id:id(),...base,status:"scheduled",
           host:{checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""},
           support:{checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""},
@@ -1732,10 +2058,18 @@
           createdById: currentUser.id,
           createdByName: currentUser.name,
           createdAt:nowText()
+        };
+        db.shifts.push(newShift);
+        recordDatabaseEvent({
+          module:"shift",
+          action:"Tạo ca live",
+          shift:newShift,
+          after:base,
+          details:{date:base.date, time:`${base.start}-${base.end}`, shop:base.shop}
         });
       }
       if(!getChannels().includes(base.shop)) db.channels.push(base.shop);
-      saveDB();
+      saveDB({immediate:true});
       closeModal("shiftModal");
       renderContent();
       toast("Đã lưu đăng ký ca live");
@@ -1743,9 +2077,17 @@
     function deleteShift(shiftId){
       if(!isAdmin()) return;
       if(!confirm("Xóa ca live này?")) return;
+      const s = db.shifts.find(x=>x.id===shiftId);
+      recordDatabaseEvent({
+        module:"shift",
+        action:"Xóa ca live",
+        shift:s,
+        before:cloneData(s || {}),
+        details:s ? {date:s.date, time:`${s.start}-${s.end}`, shop:s.shop} : null
+      });
       db.shifts = db.shifts.filter(s=>s.id!==shiftId);
       db.notes = db.notes.filter(n=>n.shiftId!==shiftId);
-      saveDB();
+      saveDB({immediate:true});
       renderContent();
       toast("Đã xóa ca live");
     }
@@ -1806,16 +2148,17 @@
       capturedPhoto = canvas.toDataURL("image/jpeg",.82);
       toast("Đã chụp ảnh check-in");
     }
-    function confirmCheckin(){
+    async function confirmCheckin(){
       const shiftId = document.getElementById("checkinShiftId").value;
       const role = document.getElementById("checkinRole").value;
       const s = db.shifts.find(x=>x.id===shiftId);
       if(!s) return;
       if(!capturedPhoto) return toast("Bạn cần chụp ảnh trước");
       const item = s[role];
+      toast(cloudReady ? "Đang tải ảnh check-in lên cloud..." : "Đang lưu check-in...");
       item.checkinTs = nowTs();
       item.checkinTime = nowText();
-      item.photo = capturedPhoto;
+      item.photo = await uploadCheckinPhotoToCloud(shiftId, role, capturedPhoto);
       item.checkinNote = document.getElementById("checkinNote").value.trim();
 
       if(item.checkinNote){
@@ -1824,7 +2167,15 @@
           type:`Check-in ${roleNameInShift(role)}`,content:item.checkinNote,createdBy:currentUser.name,time:nowText()
         });
       }
-      saveDB();
+      recordDatabaseEvent({
+        module:"employee_input",
+        action:`Nhân viên check-in ${roleNameInShift(role)}`,
+        shift:s,
+        after:{role, checkinTime:item.checkinTime, checkinNote:item.checkinNote, photoSaved:item.photo ? "Có" : "Không"},
+        details:{role, checkinTime:item.checkinTime, hasNote:!!item.checkinNote, hasPhoto:!!item.photo},
+        employeeInput:true
+      });
+      saveDB({immediate:true});
       closeCheckinModal();
       renderContent();
       toast("Đã bắt đầu live và tính giờ realtime");
@@ -1857,7 +2208,15 @@
           type:`Kết thúc ${roleNameInShift(role)}`,content:item.endNote,createdBy:currentUser.name,time:nowText()
         });
       }
-      saveDB();
+      recordDatabaseEvent({
+        module:"employee_input",
+        action:`Nhân viên kết thúc ${roleNameInShift(role)}`,
+        shift:s,
+        after:{role, endTime:item.endTime, duration:formatDuration(actualMs(item)), endNote:item.endNote},
+        details:{role, endTime:item.endTime, duration:formatDuration(actualMs(item)), hasNote:!!item.endNote},
+        employeeInput:true
+      });
+      saveDB({immediate:true});
       closeModal("endModal");
       renderContent();
       toast("Đã kết thúc live và chốt thời gian thực tế");
@@ -1880,12 +2239,21 @@
       if(!isAdmin() && !isParticipant(s)) return toast("Bạn không có quyền ghi chú ca này");
       const content = document.getElementById("noteContent").value.trim();
       if(!content) return toast("Nhập nội dung ghi chú");
-      db.notes.push({
+      const note = {
         id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${s.hostName}/${s.supportName}`,
         type:document.getElementById("noteType").value,content,createdBy:currentUser.name,time:nowText()
+      };
+      db.notes.push(note);
+      recordDatabaseEvent({
+        module:"employee_input",
+        action:"Nhân viên thêm ghi chú phát sinh",
+        shift:s,
+        after:{type:note.type, content:note.content},
+        details:{type:note.type, content:compactValue(note.content,160)},
+        employeeInput:true
       });
       document.getElementById("noteContent").value = "";
-      saveDB();
+      saveDB({immediate:true});
       renderContent();
       toast("Đã lưu ghi chú phát sinh");
     }
@@ -1939,6 +2307,15 @@
         submittedById:currentUser.id
       };
       s.report = newReport;
+      recordDatabaseEvent({
+        module:"employee_input",
+        action:oldReport ? "Nhân viên sửa báo cáo sau live" : "Nhân viên tạo báo cáo sau live",
+        shift:s,
+        before:oldReport || {},
+        after:newReport,
+        details:{gmv:newReport.gmv, orders:newReport.orders, coins:newReport.coins, view:newReport.view, aov:newReport.aov},
+        employeeInput:true
+      });
       recordEditHistory({
         shift:s,
         type:"report",
@@ -1953,7 +2330,7 @@
           type:"Báo cáo sau live",content:s.report.note,createdBy:currentUser.name,time:nowText()
         });
       }
-      saveDB();
+      saveDB({immediate:true});
       closeModal("reportModal");
       renderContent();
       toast("Đã lưu báo cáo sau live");
@@ -2099,7 +2476,10 @@
       renderApp();
       document.getElementById("clockPill").textContent = clockText();
     }
-    init();
+    init().catch(err=>{
+      console.error(err);
+      alert("Không khởi động được hệ thống. Mở Console để xem lỗi chi tiết.");
+    });
   </script>
 </body>
 </html>
