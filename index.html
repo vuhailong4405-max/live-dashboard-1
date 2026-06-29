@@ -428,6 +428,10 @@
             <option value="locked">Khóa tài khoản</option>
           </select>
         </div>
+        <div class="form-field">
+          <label>KPI GMV cá nhân</label>
+          <input id="accountKpiGmv" type="number" min="0" placeholder="Ví dụ: 50000000"/>
+        </div>
       </div>
       <div class="actions">
         <button onclick="saveAccount()">Lưu tài khoản</button>
@@ -659,11 +663,11 @@
       const admin = id(), host1 = id(), support1 = id(), host2 = id(), support2 = id();
       db = {
         accounts:[
-          {id:admin,name:"Admin Live",username:"admin",passwordHash:await hashPassword("live123"),role:"admin",shop:"Tất cả",status:"active",createdAt:nowText()},
-          {id:host1,name:"Host 1",username:"host1",passwordHash:await hashPassword("123456"),role:"host",shop:"Gooby",status:"active",createdAt:nowText()},
-          {id:support1,name:"Trợ live 1",username:"tro1",passwordHash:await hashPassword("123456"),role:"support",shop:"Gooby",status:"active",createdAt:nowText()},
-          {id:host2,name:"Host 2",username:"host2",passwordHash:await hashPassword("123456"),role:"host",shop:"Rouya",status:"active",createdAt:nowText()},
-          {id:support2,name:"Trợ live 2",username:"tro2",passwordHash:await hashPassword("123456"),role:"support",shop:"Rouya",status:"active",createdAt:nowText()}
+          {id:admin,name:"Admin Live",username:"admin",passwordHash:await hashPassword("live123"),role:"admin",shop:"Tất cả",status:"active",kpiGmv:0,createdAt:nowText()},
+          {id:host1,name:"Host 1",username:"host1",passwordHash:await hashPassword("123456"),role:"host",shop:"Gooby",status:"active",kpiGmv:50000000,createdAt:nowText()},
+          {id:support1,name:"Trợ live 1",username:"tro1",passwordHash:await hashPassword("123456"),role:"support",shop:"Gooby",status:"active",kpiGmv:50000000,createdAt:nowText()},
+          {id:host2,name:"Host 2",username:"host2",passwordHash:await hashPassword("123456"),role:"host",shop:"Rouya",status:"active",kpiGmv:50000000,createdAt:nowText()},
+          {id:support2,name:"Trợ live 2",username:"tro2",passwordHash:await hashPassword("123456"),role:"support",shop:"Rouya",status:"active",kpiGmv:50000000,createdAt:nowText()}
         ],
         shifts:[
           {
@@ -699,6 +703,7 @@
         catch(e){ await seedDB(); }
       }
       if(!db.channels || !Array.isArray(db.channels)) db.channels = ["Gooby","Rouya","Lazy Mom","Cohee"];
+      db.accounts.forEach(a=>{ if(a.kpiGmv === undefined) a.kpiGmv = 0; });
       db.shifts.forEach(s=>{ if(!s.shop) s.shop = "Khác"; });
       const userId = sessionStorage.getItem(SESSION_KEY);
       currentUser = db.accounts.find(a=>a.id === userId) || null;
@@ -1148,7 +1153,7 @@
       if(!isAdmin()) return;
       document.getElementById("accountTableWrap").innerHTML = `
         <table>
-          <thead><tr><th>Họ tên</th><th>Tài khoản</th><th>Vai trò</th><th>Shop</th><th>Trạng thái</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead>
+          <thead><tr><th>Họ tên</th><th>Tài khoản</th><th>Vai trò</th><th>Shop</th><th>KPI GMV</th><th>Trạng thái</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead>
           <tbody>
             ${db.accounts.map(a=>`
               <tr>
@@ -1156,6 +1161,7 @@
                 <td>${a.username}</td>
                 <td>${roleLabel(a.role)}</td>
                 <td>${a.shop}</td>
+                <td>${money(a.kpiGmv || 0)}</td>
                 <td><span class="badge ${a.status==="active"?"green":"red"}">${a.status==="active"?"Đang hoạt động":"Đang khóa"}</span></td>
                 <td>${a.createdAt || "-"}</td>
                 <td>
@@ -1172,6 +1178,53 @@
     function visibleShifts(){
       const shifts = isAdmin() ? db.shifts : db.shifts.filter(s=>isParticipant(s));
       return getChannelFilteredShifts(shifts);
+    }
+
+    function getAccount(accountId){
+      return db.accounts.find(a=>a.id === accountId) || null;
+    }
+
+    function getAccountKpiGmv(accountId){
+      const account = getAccount(accountId);
+      return Number(account?.kpiGmv || 0);
+    }
+
+    function shiftHostMs(shift){
+      return Number(shift.report?.hostActualMs || actualMs(shift.host));
+    }
+
+    function shiftSupportMs(shift){
+      return Number(shift.report?.supportActualMs || actualMs(shift.support));
+    }
+
+    function employeeGmvInShifts(accountId, shifts){
+      return shifts
+        .filter(s=>s.report && (s.hostId === accountId || s.supportId === accountId))
+        .reduce((sum,s)=>sum + Number(s.report?.gmv || 0),0);
+    }
+
+    function employeeLiveMsInShifts(accountId, shifts){
+      return shifts.reduce((sum,s)=>{
+        if(s.hostId === accountId) return sum + shiftHostMs(s);
+        if(s.supportId === accountId) return sum + shiftSupportMs(s);
+        return sum;
+      },0);
+    }
+
+    function kpiBarHtml(actual, target){
+      const pct = target > 0 ? Math.min(actual / target * 100, 100) : 0;
+      const displayPct = target > 0 ? Math.round(actual / target * 100) : 0;
+      return `
+        <div class="progress-wrap">
+          <div class="progress-top">
+            <span>Tiến độ KPI GMV</span>
+            <span>${money(actual)} / ${money(target)} · ${displayPct}%</span>
+          </div>
+          <div class="progress">
+            <div class="progress-bar" style="width:${pct}%"></div>
+          </div>
+        </div>
+      `;
     }
     function renderNoteOptions(){
       const shifts = visibleShifts();
@@ -1201,19 +1254,93 @@
         document.getElementById("reportWrap").innerHTML = `<div class="empty">Chưa có ca live để báo cáo theo kênh bán đang chọn.</div>`;
         return;
       }
-      const totalGMV = shifts.reduce((sum,s)=>sum+Number(s.report?.gmv||0),0);
-      const totalOrders = shifts.reduce((sum,s)=>sum+Number(s.report?.orders||0),0);
-      const totalCoins = shifts.reduce((sum,s)=>sum+Number(s.report?.coins||0),0);
-      const totalViews = shifts.reduce((sum,s)=>sum+Number(s.report?.view||0),0);
+
+      const reportedShifts = shifts.filter(s=>s.report);
+      const totalHostMs = shifts.reduce((sum,s)=>sum + shiftHostMs(s),0);
+      const totalSupportMs = shifts.reduce((sum,s)=>sum + shiftSupportMs(s),0);
+      const totalLiveMs = totalHostMs + totalSupportMs;
+      const totalGMV = reportedShifts.reduce((sum,s)=>sum+Number(s.report?.gmv||0),0);
+      const totalOrders = reportedShifts.reduce((sum,s)=>sum+Number(s.report?.orders||0),0);
+      const totalCoins = reportedShifts.reduce((sum,s)=>sum+Number(s.report?.coins||0),0);
+      const totalViews = reportedShifts.reduce((sum,s)=>sum+Number(s.report?.view||0),0);
       const avgAOV = totalOrders ? Math.round(totalGMV/totalOrders) : 0;
+
+      const personalKpiSection = !isAdmin() ? (()=>{
+        const actual = employeeGmvInShifts(currentUser.id, shifts);
+        const target = getAccountKpiGmv(currentUser.id);
+        const liveMs = employeeLiveMsInShifts(currentUser.id, shifts);
+        return `
+          <div class="card" style="margin-top:16px">
+            <div class="section-head" style="margin-top:0">
+              <div>
+                <h2>KPI GMV cá nhân</h2>
+                <p>${currentUser.name} · ${roleLabel(currentUser.role)} · Tổng thời gian live cá nhân: <b>${formatDuration(liveMs)}</b></p>
+              </div>
+              <span class="badge ${target && actual >= target ? "green" : "yellow"}">${target ? Math.round(actual/target*100) : 0}% KPI</span>
+            </div>
+            ${kpiBarHtml(actual, target)}
+          </div>
+        `;
+      })() : "";
+
+      const adminKpiSection = isAdmin() ? (()=>{
+        const employees = db.accounts.filter(a=>a.role === "host" || a.role === "support");
+        return `
+          <div class="card" style="margin-top:16px">
+            <div class="section-head" style="margin-top:0">
+              <div>
+                <h2>Tổng hợp KPI GMV nhân viên</h2>
+                <p>Tính theo kênh bán đang lọc. KPI chỉ tính theo GMV.</p>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Nhân viên</th><th>Vai trò</th><th>Kênh phụ trách</th><th>Thời gian live</th><th>GMV đã đạt</th><th>KPI GMV</th><th>Tiến độ</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${employees.map(a=>{
+                  const actual = employeeGmvInShifts(a.id, shifts);
+                  const target = getAccountKpiGmv(a.id);
+                  const pct = target > 0 ? Math.round(actual/target*100) : 0;
+                  const barWidth = target > 0 ? Math.min(actual/target*100,100) : 0;
+                  return `
+                    <tr>
+                      <td><strong>${a.name}</strong></td>
+                      <td>${roleLabel(a.role)}</td>
+                      <td>${a.shop || "-"}</td>
+                      <td>${formatDuration(employeeLiveMsInShifts(a.id, shifts))}</td>
+                      <td>${money(actual)}</td>
+                      <td>${money(target)}</td>
+                      <td>
+                        <div class="progress-wrap" style="margin:0;min-width:180px">
+                          <div class="progress-top"><span>${pct}%</span><span>${money(actual)} / ${money(target)}</span></div>
+                          <div class="progress"><div class="progress-bar" style="width:${barWidth}%"></div></div>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                }).join("")}
+              </tbody>
+            </table>
+          </div>
+        `;
+      })() : "";
+
       document.getElementById("reportWrap").innerHTML = `
         <div class="grid stats-grid" style="margin-bottom:16px">
           <div class="card"><div class="stat-title">Kênh đang lọc</div><div class="stat-value" style="font-size:22px">${selectedChannel === "all" ? "Tất cả" : selectedChannel}</div><div class="stat-note">${shifts.length} ca live</div></div>
+          <div class="card"><div class="stat-title">Tổng giờ live</div><div class="stat-value" style="font-size:24px">${formatDuration(totalLiveMs)}</div><div class="stat-note">Host + trợ live</div></div>
+          <div class="card"><div class="stat-title">Giờ host live</div><div class="stat-value" style="font-size:24px">${formatDuration(totalHostMs)}</div><div class="stat-note">Tổng thời gian host</div></div>
+          <div class="card"><div class="stat-title">Giờ trợ live</div><div class="stat-value" style="font-size:24px">${formatDuration(totalSupportMs)}</div><div class="stat-note">Tổng thời gian trợ live</div></div>
           <div class="card"><div class="stat-title">Tổng GMV</div><div class="stat-value">${money(totalGMV)}</div><div class="stat-note">Theo kênh đang lọc</div></div>
           <div class="card"><div class="stat-title">Tổng đơn</div><div class="stat-value">${totalOrders.toLocaleString("vi-VN")}</div><div class="stat-note">Theo kênh đang lọc</div></div>
           <div class="card"><div class="stat-title">Xu đã tung</div><div class="stat-value">${totalCoins.toLocaleString("vi-VN")}</div><div class="stat-note">Tổng xu</div></div>
+          <div class="card"><div class="stat-title">View</div><div class="stat-value">${totalViews.toLocaleString("vi-VN")}</div><div class="stat-note">Tổng view</div></div>
           <div class="card"><div class="stat-title">AOV trung bình</div><div class="stat-value">${money(avgAOV)}</div><div class="stat-note">GMV / đơn</div></div>
         </div>
+
         <table>
           <thead>
             <tr>
@@ -1234,8 +1361,8 @@
                   <td><span class="badge purple">${s.shop || "Khác"}</span></td>
                   <td><strong>${s.hostName}</strong></td>
                   <td>${s.supportName}</td>
-                  <td>${formatDuration(actualMs(s.host))}</td>
-                  <td>${formatDuration(actualMs(s.support))}</td>
+                  <td>${formatDuration(shiftHostMs(s))}</td>
+                  <td>${formatDuration(shiftSupportMs(s))}</td>
                   <td>${money(r.gmv || 0)}</td>
                   <td>${Number(r.orders || 0).toLocaleString("vi-VN")}</td>
                   <td>${Number(r.coins || 0).toLocaleString("vi-VN")}</td>
@@ -1253,6 +1380,9 @@
             }).join("")}
           </tbody>
         </table>
+
+        ${personalKpiSection}
+        ${adminKpiSection}
       `;
     }
 
@@ -1275,6 +1405,7 @@
       document.getElementById("accountRole").value = "host";
       document.getElementById("accountShop").innerHTML = channelOptions("Gooby");
       document.getElementById("accountStatus").value = "active";
+      document.getElementById("accountKpiGmv").value = 50000000;
       openModal("accountModal");
     }
     function editAccount(accountId){
@@ -1290,6 +1421,7 @@
       document.getElementById("accountRole").value = a.role;
       document.getElementById("accountShop").innerHTML = channelOptions(a.shop);
       document.getElementById("accountStatus").value = a.status;
+      document.getElementById("accountKpiGmv").value = Number(a.kpiGmv || 0);
       openModal("accountModal");
     }
     async function saveAccount(){
@@ -1298,6 +1430,7 @@
       const name = document.getElementById("accountName").value.trim();
       const username = document.getElementById("accountUsername").value.trim();
       const password = document.getElementById("accountPassword").value;
+      const kpiGmv = Number(document.getElementById("accountKpiGmv").value || 0);
       if(!name || !username) return toast("Nhập đủ họ tên và tài khoản");
       if(!accountId && !password) return toast("Tài khoản mới cần mật khẩu");
       const duplicate = db.accounts.some(a=>a.username.toLowerCase()===username.toLowerCase() && a.id!==accountId);
@@ -1309,6 +1442,7 @@
         a.role = document.getElementById("accountRole").value;
         a.shop = document.getElementById("accountShop").value;
         a.status = document.getElementById("accountStatus").value;
+        a.kpiGmv = kpiGmv;
         if(password) a.passwordHash = await hashPassword(password);
         db.shifts.forEach(s=>{
           if(s.hostId === a.id) s.hostName = a.name;
@@ -1320,6 +1454,7 @@
           role:document.getElementById("accountRole").value,
           shop:document.getElementById("accountShop").value,
           status:document.getElementById("accountStatus").value,
+          kpiGmv,
           createdAt:nowText()
         });
       }
@@ -1675,8 +1810,8 @@
           s.shop,
           s.hostName,
           s.supportName,
-          formatDuration(actualMs(s.host)),
-          formatDuration(actualMs(s.support)),
+          formatDuration(shiftHostMs(s)),
+          formatDuration(shiftSupportMs(s)),
           r.gmv || 0,
           r.orders || 0,
           r.coins || 0,
