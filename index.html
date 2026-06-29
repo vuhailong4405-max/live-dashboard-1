@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Live Realtime Dashboard V10 - Cloud Database Flow</title>
+  <title>Live Realtime Dashboard V11 - Multi Shop & Optional Support</title>
   <style>
     :root{
       --bg:#f5f6fb;
@@ -428,8 +428,9 @@
           </select>
         </div>
         <div class="form-field">
-          <label>Shop phụ trách</label>
-          <select id="accountShop"></select>
+          <label>Shop phụ trách <span class="meta">(có thể chọn nhiều)</span></label>
+          <select id="accountShop" multiple size="5"></select>
+          <div class="meta" style="margin-top:6px">Giữ Ctrl/Command để chọn nhiều shop. Chọn “Tất cả kênh” nếu tài khoản phụ trách toàn bộ shop.</div>
         </div>
         <div class="form-field">
           <label>Trạng thái</label>
@@ -474,7 +475,7 @@
         </div>
         <div class="form-field">
           <label>Shop / Kênh</label>
-          <select id="shiftShop"></select>
+          <select id="shiftShop" onchange="refreshShiftPeopleOptions()"></select>
           <button id="shiftAddChannelBtn" type="button" class="small secondary" style="margin-top:8px" onclick="openChannelModal()">+ Thêm kênh mới</button>
         </div>
         <div class="form-field">
@@ -482,7 +483,7 @@
           <select id="shiftHost"></select>
         </div>
         <div class="form-field">
-          <label>Trợ live</label>
+          <label>Trợ live <span class="meta">(có thể để trống)</span></label>
           <select id="shiftSupport"></select>
         </div>
       </div>
@@ -734,11 +735,17 @@
       if(!db.channels || !Array.isArray(db.channels)) db.channels = ["Gooby","Rouya","Lazy Mom","Cohee"];
       if(!db.histories || !Array.isArray(db.histories)) db.histories = [];
       if(!db.dataLogs || !Array.isArray(db.dataLogs)) db.dataLogs = [];
-      db.accounts.forEach(a=>{ if(a.kpiGmv === undefined) a.kpiGmv = 0; });
+      db.accounts.forEach(a=>{
+        if(a.kpiGmv === undefined) a.kpiGmv = 0;
+        a.shops = normalizeShopList(a.shops && a.shops.length ? a.shops : a.shop);
+        if(!a.shops.length) a.shops = a.role === "admin" ? ["Tất cả"] : [];
+        a.shop = accountShopText(a);
+      });
       db.shifts.forEach(s=>{
         if(!s.shop) s.shop = "Khác";
         if(!s.host) s.host = {checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""};
         if(!s.support) s.support = {checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""};
+        if(!s.supportId){ s.supportId = ""; s.supportName = s.supportName || "Không có"; }
       });
     }
 
@@ -800,11 +807,11 @@
       const admin = id(), host1 = id(), support1 = id(), host2 = id(), support2 = id();
       db = {
         accounts:[
-          {id:admin,name:"Admin Live",username:"admin",passwordHash:await hashPassword("live123"),role:"admin",shop:"Tất cả",status:"active",kpiGmv:0,createdAt:nowText()},
-          {id:host1,name:"Host 1",username:"host1",passwordHash:await hashPassword("123456"),role:"host",shop:"Gooby",status:"active",kpiGmv:50000000,createdAt:nowText()},
-          {id:support1,name:"Trợ live 1",username:"tro1",passwordHash:await hashPassword("123456"),role:"support",shop:"Gooby",status:"active",kpiGmv:50000000,createdAt:nowText()},
-          {id:host2,name:"Host 2",username:"host2",passwordHash:await hashPassword("123456"),role:"host",shop:"Rouya",status:"active",kpiGmv:50000000,createdAt:nowText()},
-          {id:support2,name:"Trợ live 2",username:"tro2",passwordHash:await hashPassword("123456"),role:"support",shop:"Rouya",status:"active",kpiGmv:50000000,createdAt:nowText()}
+          {id:admin,name:"Admin Live",username:"admin",passwordHash:await hashPassword("live123"),role:"admin",shop:"Tất cả",shops:["Tất cả"],status:"active",kpiGmv:0,createdAt:nowText()},
+          {id:host1,name:"Host 1",username:"host1",passwordHash:await hashPassword("123456"),role:"host",shop:"Gooby",shops:["Gooby"],status:"active",kpiGmv:50000000,createdAt:nowText()},
+          {id:support1,name:"Trợ live 1",username:"tro1",passwordHash:await hashPassword("123456"),role:"support",shop:"Gooby",shops:["Gooby"],status:"active",kpiGmv:50000000,createdAt:nowText()},
+          {id:host2,name:"Host 2",username:"host2",passwordHash:await hashPassword("123456"),role:"host",shop:"Rouya",shops:["Rouya"],status:"active",kpiGmv:50000000,createdAt:nowText()},
+          {id:support2,name:"Trợ live 2",username:"tro2",passwordHash:await hashPassword("123456"),role:"support",shop:"Rouya",shops:["Rouya"],status:"active",kpiGmv:50000000,createdAt:nowText()}
         ],
         shifts:[
           {
@@ -912,6 +919,74 @@
     }
     function roleNameInShift(role){ return role === "host" ? "Host live" : "Trợ live"; }
 
+
+    function normalizeShopList(value){
+      const raw = Array.isArray(value) ? value : String(value || "").split(/[,;|]/);
+      const map = new Map();
+      raw.forEach(item=>{
+        const clean = String(item || "").trim().replace(/\s+/g," ");
+        if(clean) map.set(clean.toLowerCase(), clean);
+      });
+      return Array.from(map.values());
+    }
+
+    function getAccountShops(account){
+      if(!account) return [];
+      const shops = normalizeShopList(account.shops && account.shops.length ? account.shops : account.shop);
+      if(!shops.length && account.role === "admin") return ["Tất cả"];
+      return shops;
+    }
+
+    function accountShopText(account){
+      const shops = getAccountShops(account);
+      return shops.length ? shops.join(", ") : "-";
+    }
+
+    function accountCanHandleShop(account, shop){
+      if(!account) return false;
+      if(account.role === "admin") return true;
+      const shops = getAccountShops(account);
+      return shops.includes("Tất cả") || shops.includes(shop);
+    }
+
+    function supportNameLabel(shift){
+      return shift && shift.supportId ? (shift.supportName || "Trợ live") : "Không có";
+    }
+
+    function shiftPeopleLabel(shift){
+      return `${shift.hostName || "-"}/${supportNameLabel(shift)}`;
+    }
+
+    function selectedAccountShopsFromForm(){
+      const select = document.getElementById("accountShop");
+      if(!select) return [];
+      return Array.from(select.selectedOptions).map(o=>o.value).filter(Boolean);
+    }
+
+    function setMultiSelectValues(select, values){
+      const chosen = new Set(normalizeShopList(values));
+      Array.from(select.options).forEach(opt=>{ opt.selected = chosen.has(opt.value); });
+    }
+
+    function accountShopOptions(selected=[]){
+      const chosen = normalizeShopList(selected);
+      const allSelected = chosen.includes("Tất cả");
+      return `<option value="Tất cả" ${allSelected?"selected":""}>Tất cả kênh</option>` +
+        getChannels().map(ch=>`<option value="${ch}" ${chosen.includes(ch)?"selected":""}>${ch}</option>`).join("");
+    }
+
+    function allowedChannelsForCurrentUser(){
+      if(isAdmin()) return getChannels();
+      const shops = getAccountShops(currentUser).filter(ch=>ch !== "Tất cả");
+      return getAccountShops(currentUser).includes("Tất cả") || !shops.length ? getChannels() : shops;
+    }
+
+    function shiftChannelOptions(selected=""){
+      const allowed = allowedChannelsForCurrentUser();
+      const safeSelected = allowed.includes(selected) ? selected : (allowed[0] || "");
+      return allowed.map(ch=>`<option value="${ch}" ${ch===safeSelected?"selected":""}>${ch}</option>`).join("");
+    }
+
     async function login(){
       const username = document.getElementById("loginUsername").value.trim();
       const password = document.getElementById("loginPassword").value;
@@ -993,8 +1068,10 @@
         if(clean) map.set(clean.toLowerCase(), clean);
       });
       (db.accounts || []).forEach(a=>{
-        const clean = String(a.shop || "").trim();
-        if(clean && clean !== "Tất cả") map.set(clean.toLowerCase(), clean);
+        getAccountShops(a).forEach(ch=>{
+          const clean = String(ch || "").trim();
+          if(clean && clean !== "Tất cả") map.set(clean.toLowerCase(), clean);
+        });
       });
       (db.shifts || []).forEach(s=>{
         const clean = String(s.shop || "").trim();
@@ -1005,7 +1082,8 @@
     }
 
     function channelOptions(selected=""){
-      return getChannels().map(ch=>`<option value="${ch}" ${ch===selected?"selected":""}>${ch}</option>`).join("");
+      const selectedList = normalizeShopList(selected);
+      return getChannels().map(ch=>`<option value="${ch}" ${selectedList.includes(ch)?"selected":""}>${ch}</option>`).join("");
     }
 
     function getChannelFilteredShifts(shifts){
@@ -1132,7 +1210,10 @@
       const shiftShop = document.getElementById("shiftShop");
       if(shiftShop) shiftShop.innerHTML = channelOptions(selected || shiftShop.value);
       const accountShop = document.getElementById("accountShop");
-      if(accountShop) accountShop.innerHTML = channelOptions(selected || accountShop.value);
+      if(accountShop){
+        const current = selectedAccountShopsFromForm();
+        accountShop.innerHTML = accountShopOptions(selected ? [selected] : current);
+      }
       const filterSelect = document.getElementById("channelFilterSelect");
       if(filterSelect) filterSelect.value = selectedChannel;
     }
@@ -1152,13 +1233,14 @@
     }
 
     function computeShiftStatus(shift){
+      const hasSupport = !!shift.supportId;
       const hostLive = shift.host.checkinTs && !shift.host.endTs;
-      const supportLive = shift.support.checkinTs && !shift.support.endTs;
-      const anyStarted = shift.host.checkinTs || shift.support.checkinTs;
+      const supportLive = hasSupport && shift.support.checkinTs && !shift.support.endTs;
+      const anyStarted = shift.host.checkinTs || (hasSupport && shift.support.checkinTs);
       const anyLive = hostLive || supportLive;
       const bothEndedOrNotStarted =
         (!shift.host.checkinTs || shift.host.endTs) &&
-        (!shift.support.checkinTs || shift.support.endTs);
+        (!hasSupport || !shift.support.checkinTs || shift.support.endTs);
 
       if(shift.report) return {label:"Đã báo cáo",color:"purple",card:"reported",value:"reported"};
       if(anyLive) return {label:"Đang hoạt động",color:"green",card:"active",value:"active"};
@@ -1168,13 +1250,15 @@
 
     function canCheckin(shift, role){
       if(!role) return false;
+      if(role === "support" && !shift.supportId) return false;
       const item = shift[role];
-      return !item.checkinTs;
+      return item && !item.checkinTs;
     }
     function canEndLive(shift, role){
       if(!role) return false;
+      if(role === "support" && !shift.supportId) return false;
       const item = shift[role];
-      return item.checkinTs && !item.endTs;
+      return item && item.checkinTs && !item.endTs;
     }
     function canReport(shift){
       const st = computeShiftStatus(shift).value;
@@ -1214,7 +1298,8 @@
       const st = computeShiftStatus(shift);
       const myRole = userRoleInShift(shift);
       const showHostEnd = shift.host.checkinTs ? formatDuration(actualMs(shift.host)) : "Chưa bắt đầu";
-      const showSupportEnd = shift.support.checkinTs ? formatDuration(actualMs(shift.support)) : "Chưa bắt đầu";
+      const hasSupport = !!shift.supportId;
+      const showSupportEnd = hasSupport ? (shift.support.checkinTs ? formatDuration(actualMs(shift.support)) : "Chưa bắt đầu") : "Không có";
       const report = shift.report || {};
       const aov = report.aov || (report.orders ? Math.round(report.gmv / report.orders) : 0);
 
@@ -1230,10 +1315,10 @@
       if((isAdmin() || myRole === "host") && canEndLive(shift,"host")){
         roleActions.push(`<button class="small red" onclick="openEndModal('${shift.id}','host')">Kết thúc host live</button>`);
       }
-      if((isAdmin() || myRole === "support") && canCheckin(shift,"support")){
+      if(hasSupport && (isAdmin() || myRole === "support") && canCheckin(shift,"support")){
         roleActions.push(`<button class="small green" onclick="openCheckinModal('${shift.id}','support')">Trợ live check-in</button>`);
       }
-      if((isAdmin() || myRole === "support") && canEndLive(shift,"support")){
+      if(hasSupport && (isAdmin() || myRole === "support") && canEndLive(shift,"support")){
         roleActions.push(`<button class="small red" onclick="openEndModal('${shift.id}','support')">Kết thúc trợ live</button>`);
       }
 
@@ -1245,7 +1330,7 @@
               <div>
                 <div class="name">${shift.hostName}</div>
                 <div class="meta">Host live · ${shift.shop} · ${shift.date} · ${shift.start}-${shift.end}</div>
-                <div class="meta">Trợ live: <b>${shift.supportName}</b></div>
+                <div class="meta">Trợ live: <b>${supportNameLabel(shift)}</b></div>
               </div>
             </div>
             <span class="badge ${st.color}">${st.label}</span>
@@ -1330,9 +1415,9 @@
                 <td>${s.start}-${s.end}</td>
                 <td><span class="badge purple">${s.shop || "Khác"}</span></td>
                 <td><strong>${s.hostName}</strong></td>
-                <td>${s.supportName}</td>
+                <td>${supportNameLabel(s)}</td>
                 <td>${formatDuration(actualMs(s.host))}</td>
-                <td>${formatDuration(actualMs(s.support))}</td>
+                <td>${s.supportId ? formatDuration(actualMs(s.support)) : "Không có"}</td>
                 <td><span class="badge ${st.color}">${st.label}</span></td>
                 <td>${s.goal || "-"}</td>
                 <td>
@@ -1356,7 +1441,7 @@
                 <td><strong>${a.name}</strong></td>
                 <td>${a.username}</td>
                 <td>${roleLabel(a.role)}</td>
-                <td>${a.shop}</td>
+                <td>${accountShopText(a)}</td>
                 <td>${money(a.kpiGmv || 0)}</td>
                 <td><span class="badge ${a.status==="active"?"green":"red"}">${a.status==="active"?"Đang hoạt động":"Đang khóa"}</span></td>
                 <td>${a.createdAt || "-"}</td>
@@ -1390,6 +1475,7 @@
     }
 
     function shiftSupportMs(shift){
+      if(!shift.supportId) return 0;
       return Number(shift.report?.supportActualMs || actualMs(shift.support));
     }
 
@@ -1455,7 +1541,7 @@
 
     function shiftLabel(shift){
       if(!shift) return "Ca live không xác định";
-      return `${shift.date || "-"} · ${shift.shop || "Khác"} · ${shift.start || "-"}-${shift.end || "-"} · ${shift.hostName || "-"}/${shift.supportName || "-"}`;
+      return `${shift.date || "-"} · ${shift.shop || "Khác"} · ${shift.start || "-"}-${shift.end || "-"} · ${shiftPeopleLabel(shift)}`;
     }
 
     function normalizeHistoryValue(value){
@@ -1638,7 +1724,7 @@
       if(!wrap || !currentUser) return;
       const shifts = visibleShifts();
       const histories = visibleHistory();
-      const options = shifts.map(s=>`<option value="${s.id}" ${historyShiftFilter===s.id?"selected":""}>${s.date} · ${s.shop || "Khác"} · ${s.start}-${s.end} · ${s.hostName}/${s.supportName}</option>`).join("");
+      const options = shifts.map(s=>`<option value="${s.id}" ${historyShiftFilter===s.id?"selected":""}>${s.date} · ${s.shop || "Khác"} · ${s.start}-${s.end} · ${s.hostName}/${supportNameLabel(s)}</option>`).join("");
       wrap.innerHTML = `
         <div class="card" style="margin-bottom:16px">
           <div class="section-head" style="margin:0;align-items:center">
@@ -1692,7 +1778,7 @@
     function renderNoteOptions(){
       const shifts = visibleShifts();
       document.getElementById("noteShiftSelect").innerHTML = shifts.map(s=>`
-        <option value="${s.id}">${s.date} · ${s.shop || "Khác"} · ${s.start}-${s.end} · Host: ${s.hostName} · Trợ: ${s.supportName}</option>
+        <option value="${s.id}">${s.date} · ${s.shop || "Khác"} · ${s.start}-${s.end} · Host: ${s.hostName} · Trợ: ${supportNameLabel(s)}</option>
       `).join("") || `<option value="">Chưa có ca live</option>`;
     }
     function renderNotes(){
@@ -1823,7 +1909,7 @@
                   <td>${s.date}<br/><span class="meta">${s.start}-${s.end}</span></td>
                   <td><span class="badge purple">${s.shop || "Khác"}</span></td>
                   <td><strong>${s.hostName}</strong></td>
-                  <td>${s.supportName}</td>
+                  <td>${supportNameLabel(s)}</td>
                   <td>${formatDuration(shiftHostMs(s))}</td>
                   <td>${formatDuration(shiftSupportMs(s))}</td>
                   <td>${money(r.gmv || 0)}</td>
@@ -1855,9 +1941,15 @@
     function openModal(mid){ document.getElementById(mid).classList.add("active"); }
     function closeModal(mid){ document.getElementById(mid).classList.remove("active"); }
 
-    function accountOptions(roleFilter, selectedId=""){
-      const list = db.accounts.filter(a=>a.status==="active" && (roleFilter ? a.role===roleFilter : true));
-      return list.map(a=>`<option value="${a.id}" ${a.id===selectedId?"selected":""}>${a.name} · ${roleLabel(a.role)} · ${a.shop}</option>`).join("");
+    function accountOptions(roleFilter, selectedId="", opts={}){
+      const currentShop = document.getElementById("shiftShop")?.value || "";
+      const list = db.accounts.filter(a=>{
+        if(a.status !== "active") return false;
+        if(roleFilter && a.role !== roleFilter) return false;
+        return currentShop ? accountCanHandleShop(a, currentShop) : true;
+      });
+      const empty = opts.allowEmpty ? `<option value="" ${!selectedId?"selected":""}>Không có / để trống</option>` : "";
+      return empty + list.map(a=>`<option value="${a.id}" ${a.id===selectedId?"selected":""}>${a.name} · ${roleLabel(a.role)} · ${accountShopText(a)}</option>`).join("");
     }
 
     function openAccountModal(){
@@ -1869,7 +1961,7 @@
       document.getElementById("accountUsername").disabled = false;
       document.getElementById("accountPassword").value = "";
       document.getElementById("accountRole").value = "host";
-      document.getElementById("accountShop").innerHTML = channelOptions("Gooby");
+      document.getElementById("accountShop").innerHTML = accountShopOptions(["Gooby"]);
       document.getElementById("accountStatus").value = "active";
       document.getElementById("accountKpiGmv").value = 50000000;
       openModal("accountModal");
@@ -1885,7 +1977,7 @@
       document.getElementById("accountUsername").disabled = true;
       document.getElementById("accountPassword").value = "";
       document.getElementById("accountRole").value = a.role;
-      document.getElementById("accountShop").innerHTML = channelOptions(a.shop);
+      document.getElementById("accountShop").innerHTML = accountShopOptions(getAccountShops(a));
       document.getElementById("accountStatus").value = a.status;
       document.getElementById("accountKpiGmv").value = Number(a.kpiGmv || 0);
       openModal("accountModal");
@@ -1897,7 +1989,9 @@
       const username = document.getElementById("accountUsername").value.trim();
       const password = document.getElementById("accountPassword").value;
       const kpiGmv = Number(document.getElementById("accountKpiGmv").value || 0);
+      const shops = selectedAccountShopsFromForm();
       if(!name || !username) return toast("Nhập đủ họ tên và tài khoản");
+      if(!shops.length) return toast("Chọn ít nhất 1 shop phụ trách");
       if(!accountId && !password) return toast("Tài khoản mới cần mật khẩu");
       const duplicate = db.accounts.some(a=>a.username.toLowerCase()===username.toLowerCase() && a.id!==accountId);
       if(duplicate) return toast("Tên đăng nhập đã tồn tại");
@@ -1907,7 +2001,8 @@
         const beforeAccount = removeSensitiveAccountFields(a);
         a.name = name;
         a.role = document.getElementById("accountRole").value;
-        a.shop = document.getElementById("accountShop").value;
+        a.shops = shops;
+        a.shop = accountShopText(a);
         a.status = document.getElementById("accountStatus").value;
         a.kpiGmv = kpiGmv;
         const changedPassword = !!password;
@@ -1928,7 +2023,8 @@
         const newAccount = {
           id:id(),name,username,passwordHash:await hashPassword(password),
           role:document.getElementById("accountRole").value,
-          shop:document.getElementById("accountShop").value,
+          shops,
+          shop:shops.join(", "),
           status:document.getElementById("accountStatus").value,
           kpiGmv,
           createdAt:nowText()
@@ -1939,7 +2035,7 @@
           action:"Tạo tài khoản nhân viên",
           account:newAccount,
           after:removeSensitiveAccountFields(newAccount),
-          details:{username:newAccount.username, role:newAccount.role, shop:newAccount.shop, kpiGmv:newAccount.kpiGmv}
+          details:{username:newAccount.username, role:newAccount.role, shop:accountShopText(newAccount), kpiGmv:newAccount.kpiGmv}
         });
       }
       saveDB({immediate:true});
@@ -1957,12 +2053,24 @@
         action:"Xóa tài khoản nhân viên",
         account:a,
         before:removeSensitiveAccountFields(a),
-        details:{username:a.username, role:a.role, shop:a.shop}
+        details:{username:a.username, role:a.role, shop:accountShopText(a)}
       });
       db.accounts = db.accounts.filter(x=>x.id!==accountId);
       saveDB({immediate:true});
       renderContent();
       toast("Đã xóa tài khoản");
+    }
+
+    function refreshShiftPeopleOptions(){
+      const hostSelect = document.getElementById("shiftHost");
+      const supportSelect = document.getElementById("shiftSupport");
+      if(!hostSelect || !supportSelect) return;
+      const oldHost = hostSelect.value;
+      const oldSupport = supportSelect.value;
+      const hostSelected = db.accounts.some(a=>a.id===oldHost && a.role==="host" && accountCanHandleShop(a, document.getElementById("shiftShop").value)) ? oldHost : "";
+      const supportSelected = db.accounts.some(a=>a.id===oldSupport && a.role==="support" && accountCanHandleShop(a, document.getElementById("shiftShop").value)) ? oldSupport : "";
+      hostSelect.innerHTML = accountOptions("host", hostSelected);
+      supportSelect.innerHTML = accountOptions("support", supportSelected, {allowEmpty:true});
     }
 
     function openShiftModal(){
@@ -1971,13 +2079,16 @@
       document.getElementById("shiftDate").value = todayISO();
       document.getElementById("shiftStart").value = "08:00";
       document.getElementById("shiftEnd").value = "12:00";
-      const defaultChannel = selectedChannel !== "all" ? selectedChannel : (currentUser.shop && currentUser.shop !== "Tất cả" ? currentUser.shop : getChannels()[0]);
-      document.getElementById("shiftShop").innerHTML = channelOptions(defaultChannel);
+      const allowedChannels = allowedChannelsForCurrentUser();
+      const defaultChannel = selectedChannel !== "all" && allowedChannels.includes(selectedChannel)
+        ? selectedChannel
+        : (allowedChannels[0] || getChannels()[0]);
+      document.getElementById("shiftShop").innerHTML = shiftChannelOptions(defaultChannel);
       document.getElementById("shiftAddChannelBtn").classList.toggle("hidden", !isAdmin());
       const hostSelected = currentUser.role === "host" ? currentUser.id : "";
       const supportSelected = currentUser.role === "support" ? currentUser.id : "";
       document.getElementById("shiftHost").innerHTML = accountOptions("host", hostSelected);
-      document.getElementById("shiftSupport").innerHTML = accountOptions("support", supportSelected);
+      document.getElementById("shiftSupport").innerHTML = accountOptions("support", supportSelected, {allowEmpty:true});
       document.getElementById("shiftGoal").value = "";
       openModal("shiftModal");
     }
@@ -1990,10 +2101,10 @@
       document.getElementById("shiftDate").value = s.date;
       document.getElementById("shiftStart").value = s.start;
       document.getElementById("shiftEnd").value = s.end;
-      document.getElementById("shiftShop").innerHTML = channelOptions(s.shop);
+      document.getElementById("shiftShop").innerHTML = shiftChannelOptions(s.shop);
       document.getElementById("shiftAddChannelBtn").classList.toggle("hidden", !isAdmin());
       document.getElementById("shiftHost").innerHTML = accountOptions("host", s.hostId);
-      document.getElementById("shiftSupport").innerHTML = accountOptions("support", s.supportId);
+      document.getElementById("shiftSupport").innerHTML = accountOptions("support", s.supportId || "", {allowEmpty:true});
       document.getElementById("shiftGoal").value = s.goal || "";
       openModal("shiftModal");
     }
@@ -2003,21 +2114,26 @@
       const hostId = document.getElementById("shiftHost").value;
       const supportId = document.getElementById("shiftSupport").value;
       const host = db.accounts.find(a=>a.id===hostId);
-      const support = db.accounts.find(a=>a.id===supportId);
-      if(!host || !support) return toast("Cần chọn đủ host live và trợ live");
+      const support = supportId ? db.accounts.find(a=>a.id===supportId) : null;
+      if(!host) return toast("Cần chọn host live");
+      if(supportId && !support) return toast("Trợ live không hợp lệ");
       if(!isAdmin() && hostId !== currentUser.id && supportId !== currentUser.id){
         return toast("Bạn chỉ được đăng ký ca có tên mình là host hoặc trợ live");
       }
+      const selectedShop = document.getElementById("shiftShop").value;
+      if(!isAdmin() && !accountCanHandleShop(currentUser, selectedShop)) return toast("Bạn không phụ trách shop/kênh này");
+      if(!accountCanHandleShop(host, selectedShop)) return toast("Host live chưa được phân quyền shop/kênh này");
+      if(support && !accountCanHandleShop(support, selectedShop)) return toast("Trợ live chưa được phân quyền shop/kênh này");
 
       const base = {
         date:document.getElementById("shiftDate").value,
         start:document.getElementById("shiftStart").value,
         end:document.getElementById("shiftEnd").value,
-        shop:document.getElementById("shiftShop").value,
+        shop:selectedShop,
         hostId:host.id,
         hostName:host.name,
-        supportId:support.id,
-        supportName:support.name,
+        supportId:support ? support.id : "",
+        supportName:support ? support.name : "Không có",
         goal:document.getElementById("shiftGoal").value.trim()
       };
       if(!base.date || !base.start || !base.end) return toast("Nhập đủ ngày và giờ live");
@@ -2101,7 +2217,7 @@
 
       document.getElementById("checkinShiftId").value = shiftId;
       document.getElementById("checkinRole").value = role;
-      document.getElementById("checkinMeta").textContent = `${roleNameInShift(role)} · ${role==="host"?s.hostName:s.supportName} · ${s.date} · ${s.start}-${s.end}`;
+      document.getElementById("checkinMeta").textContent = `${roleNameInShift(role)} · ${role==="host"?s.hostName:supportNameLabel(s)} · ${s.date} · ${s.start}-${s.end}`;
       document.getElementById("checkinNote").value = "";
       capturedPhoto = "";
 
@@ -2164,7 +2280,7 @@
 
       if(item.checkinNote){
         db.notes.push({
-          id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${s.hostName}/${s.supportName}`,
+          id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${shiftPeopleLabel(s)}`,
           type:`Check-in ${roleNameInShift(role)}`,content:item.checkinNote,createdBy:currentUser.name,time:nowText()
         });
       }
@@ -2189,7 +2305,7 @@
       if(!canEndLive(s,role)) return toast("Vị trí này chưa live hoặc đã kết thúc");
       document.getElementById("endShiftId").value = shiftId;
       document.getElementById("endRole").value = role;
-      document.getElementById("endMeta").textContent = `${roleNameInShift(role)} · ${role==="host"?s.hostName:s.supportName}`;
+      document.getElementById("endMeta").textContent = `${roleNameInShift(role)} · ${role==="host"?s.hostName:supportNameLabel(s)}`;
       document.getElementById("endDurationText").innerHTML = `Thời gian đang tính: <b>${formatDuration(actualMs(s[role]))}</b>. Sau khi xác nhận sẽ chốt vào báo cáo.`;
       document.getElementById("endNote").value = "";
       openModal("endModal");
@@ -2205,7 +2321,7 @@
       item.endNote = document.getElementById("endNote").value.trim();
       if(item.endNote){
         db.notes.push({
-          id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${s.hostName}/${s.supportName}`,
+          id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${shiftPeopleLabel(s)}`,
           type:`Kết thúc ${roleNameInShift(role)}`,content:item.endNote,createdBy:currentUser.name,time:nowText()
         });
       }
@@ -2241,7 +2357,7 @@
       const content = document.getElementById("noteContent").value.trim();
       if(!content) return toast("Nhập nội dung ghi chú");
       const note = {
-        id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${s.hostName}/${s.supportName}`,
+        id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${shiftPeopleLabel(s)}`,
         type:document.getElementById("noteType").value,content,createdBy:currentUser.name,time:nowText()
       };
       db.notes.push(note);
@@ -2264,7 +2380,7 @@
       if(!s) return;
       if(!canReport(s)) return toast("Chỉ nhập báo cáo sau khi ca đã kết thúc live");
       document.getElementById("reportShiftId").value = shiftId;
-      document.getElementById("reportMeta").textContent = `${s.date} · ${s.start}-${s.end} · Host ${s.hostName} · Trợ ${s.supportName}`;
+      document.getElementById("reportMeta").textContent = `${s.date} · ${s.start}-${s.end} · Host ${s.hostName} · Trợ ${supportNameLabel(s)}`;
       const r = s.report || {};
       document.getElementById("reportGMV").value = r.gmv || 0;
       document.getElementById("reportOrders").value = r.orders || 0;
@@ -2327,7 +2443,7 @@
       });
       if(s.report.note){
         db.notes.push({
-          id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${s.hostName}/${s.supportName}`,
+          id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${shiftPeopleLabel(s)}`,
           type:"Báo cáo sau live",content:s.report.note,createdBy:currentUser.name,time:nowText()
         });
       }
@@ -2341,7 +2457,7 @@
       const s = db.shifts.find(x=>x.id===shiftId);
       if(!s || !s[role].photo) return;
       document.getElementById("photoPreview").src = s[role].photo;
-      document.getElementById("photoMeta").textContent = `${roleNameInShift(role)} · ${role==="host"?s.hostName:s.supportName} · ${s[role].checkinTime}`;
+      document.getElementById("photoMeta").textContent = `${roleNameInShift(role)} · ${role==="host"?s.hostName:supportNameLabel(s)} · ${s[role].checkinTime}`;
       openModal("photoModal");
     }
 
@@ -2387,7 +2503,7 @@
           `${s.start}-${s.end}`,
           s.shop,
           s.hostName,
-          s.supportName,
+          supportNameLabel(s),
           formatDuration(shiftHostMs(s)),
           formatDuration(shiftSupportMs(s)),
           r.gmv || 0,
