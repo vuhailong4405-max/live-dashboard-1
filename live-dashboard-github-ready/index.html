@@ -1,0 +1,1770 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Live Realtime Dashboard V3</title>
+  <style>
+    :root{
+      --bg:#f5f6fb;
+      --card:#ffffff;
+      --text:#172033;
+      --muted:#667085;
+      --line:#e6e8ef;
+      --primary:#ff7a2f;
+      --primary2:#ffb06f;
+      --green:#16a34a;
+      --yellow:#f59e0b;
+      --red:#dc2626;
+      --blue:#2563eb;
+      --purple:#7c3aed;
+      --shadow:0 12px 28px rgba(18,25,38,.08);
+      --radius:18px;
+    }
+
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,Arial,sans-serif;background:var(--bg);color:var(--text)}
+    .hidden{display:none!important}
+
+    button{
+      border:0;background:var(--primary);color:white;border-radius:12px;
+      padding:10px 14px;font-weight:850;cursor:pointer;transition:.15s
+    }
+    button:hover{transform:translateY(-1px);background:#e9671f}
+    button.secondary{background:#fff3ea;color:#b55319}
+    button.dark{background:#111827}
+    button.gray{background:#f3f4f6;color:#374151}
+    button.green{background:var(--green)}
+    button.red{background:var(--red)}
+    button.blue{background:var(--blue)}
+    button.purple{background:var(--purple)}
+    button.small{font-size:12px;padding:7px 10px;border-radius:10px}
+    button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+
+    input,select,textarea{
+      width:100%;border:1px solid var(--line);border-radius:12px;
+      padding:11px 12px;font-size:14px;outline:none;background:white
+    }
+    input:focus,select:focus,textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(255,122,47,.14)}
+    textarea{min-height:88px;resize:vertical}
+    label{display:block;color:#344054;font-size:12px;font-weight:900;margin-bottom:6px}
+
+    .login-page{
+      min-height:100vh;display:grid;place-items:center;padding:20px;
+      background:radial-gradient(circle at 18% 18%,rgba(255,122,47,.18),transparent 28%),
+                 radial-gradient(circle at 80% 12%,rgba(37,99,235,.12),transparent 26%),var(--bg)
+    }
+    .login-card{
+      width:min(470px,100%);background:white;border-radius:26px;box-shadow:0 24px 80px rgba(20,20,20,.12);
+      padding:28px;border:1px solid var(--line)
+    }
+    .brand-mark{
+      width:58px;height:58px;border-radius:18px;background:linear-gradient(135deg,var(--primary),var(--primary2));
+      display:grid;place-items:center;color:white;font-size:24px;font-weight:950;margin-bottom:14px
+    }
+    .login-card h1{margin:0;font-size:26px;letter-spacing:-.4px}
+    .login-card p{color:var(--muted);line-height:1.5}
+    .form-field{margin-bottom:12px}
+
+    header{
+      background:linear-gradient(135deg,var(--primary),var(--primary2));color:white;position:sticky;top:0;z-index:30;
+      box-shadow:0 10px 24px rgba(255,122,47,.18)
+    }
+    .header-wrap{
+      max-width:1500px;margin:0 auto;padding:18px;display:flex;justify-content:space-between;align-items:center;gap:16px
+    }
+    .title-wrap h1{margin:0;font-size:24px;letter-spacing:-.4px}
+    .title-wrap div{font-size:13px;opacity:.92;margin-top:4px}
+    .user-box{display:flex;align-items:center;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+    .user-pill{
+      background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.32);
+      border-radius:999px;padding:8px 12px;font-size:13px;font-weight:850
+    }
+
+    main{max-width:1500px;margin:20px auto 50px;padding:0 18px}
+    .tabs{display:flex;gap:10px;overflow:auto;padding-bottom:4px;margin-bottom:18px}
+    .tab{background:white;color:#1f2937;border:1px solid var(--line);box-shadow:none;white-space:nowrap}
+    .tab.active{background:#111827;color:white;border-color:#111827}
+    .view{display:none}.view.active{display:block}
+
+    .grid{display:grid;gap:16px}
+    .stats-grid{grid-template-columns:repeat(5,minmax(150px,1fr));margin-bottom:16px}
+    .live-grid{grid-template-columns:repeat(3,minmax(280px,1fr))}
+    .two-col{display:grid;grid-template-columns:1.05fr .95fr;gap:16px;align-items:start}
+    .form-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .form-grid.two{grid-template-columns:repeat(2,1fr)}
+    .form-grid.four{grid-template-columns:repeat(4,1fr)}
+
+    .card{
+      background:var(--card);border:1px solid rgba(230,232,239,.9);border-radius:var(--radius);
+      box-shadow:var(--shadow);padding:18px
+    }
+    .stat-title{font-size:13px;color:var(--muted);margin-bottom:7px}
+    .stat-value{font-size:27px;font-weight:950;letter-spacing:-.6px}
+    .stat-note{font-size:12px;color:var(--muted);margin-top:6px}
+    .section-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin:22px 0 12px}
+    .section-head h2{margin:0;font-size:20px;letter-spacing:-.3px}
+    .section-head p{margin:4px 0 0;font-size:13px;color:var(--muted)}
+
+    .live-card{position:relative;overflow:hidden}
+    .live-card::before{content:"";position:absolute;top:0;left:0;right:0;height:5px;background:#cbd5e1}
+    .live-card.active::before{background:var(--green)}
+    .live-card.waiting::before{background:#9ca3af}
+    .live-card.ended::before{background:var(--blue)}
+    .live-card.reported::before{background:var(--purple)}
+    .live-card.issue::before{background:var(--red)}
+
+    .person-row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:12px}
+    .person-info{display:flex;gap:10px;align-items:center;min-width:0}
+    .avatar{
+      width:44px;height:44px;border-radius:15px;background:#fff1e8;color:#b55319;
+      display:grid;place-items:center;font-weight:950;flex:0 0 auto
+    }
+    .name{font-size:16px;font-weight:950}
+    .meta{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.4}
+    .badge{display:inline-flex;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:900;white-space:nowrap}
+    .badge.green{background:#dcfce7;color:#166534}
+    .badge.yellow{background:#fef3c7;color:#92400e}
+    .badge.red{background:#fee2e2;color:#991b1b}
+    .badge.gray{background:#f3f4f6;color:#4b5563}
+    .badge.blue{background:#dbeafe;color:#1d4ed8}
+    .badge.purple{background:#ede9fe;color:#5b21b6}
+
+    .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:13px 0}
+    .metric{background:#f9fafb;border:1px solid var(--line);border-radius:14px;padding:10px}
+    .metric-label{font-size:11px;color:var(--muted)}
+    .metric-value{font-size:16px;font-weight:950;margin-top:3px}
+    .metric-value.timer{color:var(--green)}
+
+    .progress-wrap{margin:12px 0}
+    .progress-top{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);margin-bottom:6px}
+    .progress{height:10px;background:#f3f4f6;border-radius:999px;overflow:hidden}
+    .progress-bar{height:100%;background:var(--primary);border-radius:999px;transition:.2s;width:0}
+
+    .alert-box{border-radius:13px;padding:10px 12px;font-size:13px;font-weight:850;margin:12px 0;line-height:1.4}
+    .alert-box.green{background:#f0fdf4;color:#166534}
+    .alert-box.yellow{background:#fffbeb;color:#92400e}
+    .alert-box.red{background:#fef2f2;color:#991b1b}
+    .alert-box.gray{background:#f9fafb;color:#4b5563}
+    .alert-box.blue{background:#eff6ff;color:#1d4ed8}
+    .alert-box.purple{background:#f5f3ff;color:#5b21b6}
+
+    .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap}
+
+    table{width:100%;border-collapse:collapse;background:white;border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+    th,td{padding:13px 12px;text-align:left;border-bottom:1px solid var(--line);font-size:14px;vertical-align:middle}
+    th{background:#f9fafb;color:#374151;font-size:12px;letter-spacing:.4px;text-transform:uppercase}
+    tr:last-child td{border-bottom:0}
+
+    .empty{background:#f9fafb;border:1px dashed #d0d5dd;color:var(--muted);text-align:center;padding:22px;border-radius:18px}
+    .photo{width:76px;height:56px;object-fit:cover;border-radius:12px;border:1px solid var(--line);background:#f3f4f6}
+    .photo.large{width:100%;max-height:360px;height:auto;border-radius:18px}
+    .note-list{display:grid;gap:10px}
+    .note-item{background:#f9fafb;border:1px solid var(--line);border-radius:14px;padding:12px}
+    .note-top{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);margin-bottom:6px}
+
+    .modal-backdrop{
+      display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:80;
+      align-items:center;justify-content:center;padding:18px
+    }
+    .modal-backdrop.active{display:flex}
+    .modal{
+      width:min(900px,100%);max-height:92vh;overflow:auto;background:white;border-radius:24px;
+      box-shadow:0 28px 90px rgba(0,0,0,.25);padding:20px
+    }
+    .modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px}
+    .modal-head h3{margin:0;font-size:21px;letter-spacing:-.3px}
+    .close{width:36px;height:36px;padding:0;border-radius:50%;background:#f3f4f6;color:#344054;font-size:18px}
+    .camera-box{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+    video,canvas{width:100%;border-radius:18px;background:#111827;border:1px solid var(--line)}
+    .warning-note{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;border-radius:16px;padding:12px 14px;font-size:13px;line-height:1.45;margin-top:14px}
+    .toast{
+      position:fixed;bottom:18px;right:18px;z-index:100;background:#111827;color:white;
+      border-radius:14px;padding:12px 14px;font-weight:900;box-shadow:var(--shadow);display:none
+    }
+    .toast.active{display:block}
+    .table-scroll{overflow:auto;border-radius:var(--radius)}
+
+    @media(max-width:1120px){
+      .stats-grid{grid-template-columns:repeat(2,1fr)}
+      .live-grid{grid-template-columns:repeat(2,1fr)}
+      .two-col{grid-template-columns:1fr}
+      .form-grid,.form-grid.two,.form-grid.four{grid-template-columns:repeat(2,1fr)}
+      .metrics{grid-template-columns:repeat(2,1fr)}
+      .camera-box{grid-template-columns:1fr}
+    }
+    @media(max-width:720px){
+      .header-wrap{flex-direction:column;align-items:flex-start}
+      .user-box{justify-content:flex-start}
+      .stats-grid,.live-grid,.form-grid,.form-grid.two,.form-grid.four{grid-template-columns:1fr}
+      th,td{font-size:12px;padding:10px 8px}
+      .title-wrap h1{font-size:21px}
+    }
+  </style>
+</head>
+<body>
+  <section id="loginPage" class="login-page">
+    <div class="login-card">
+      <div class="brand-mark">L</div>
+      <h1>Đăng nhập hệ thống Live</h1>
+      <p>Check-in bằng ảnh sẽ được tính là bắt đầu livestream. Sau check-in, ca đang hoạt động sẽ tự chuyển sang nút kết thúc ca và tính thời gian live realtime.</p>
+      <div class="form-field">
+        <label>Tài khoản</label>
+        <input id="loginUsername" placeholder="admin / host1 / tro1"/>
+      </div>
+      <div class="form-field">
+        <label>Mật khẩu</label>
+        <input id="loginPassword" type="password" placeholder="Nhập mật khẩu"/>
+      </div>
+      <button style="width:100%;margin-top:6px" onclick="login()">Đăng nhập</button>
+      <div class="warning-note">
+        Tài khoản test: <b>admin / live123</b>, <b>host1 / 123456</b>, <b>tro1 / 123456</b>.<br/>
+        Bản này lưu dữ liệu bằng LocalStorage để demo. Admin có thể thêm kênh bán mới trong giao diện. Muốn nhiều máy cùng truy cập bằng 1 link và dùng chung dữ liệu realtime, cần deploy lên hosting và nối Firebase/Supabase/server.
+      </div>
+    </div>
+  </section>
+
+  <section id="appPage" class="hidden">
+    <header>
+      <div class="header-wrap">
+        <div class="title-wrap">
+          <h1>Quản lý ca live realtime</h1>
+          <div id="headerSubtitle">Dashboard vận hành host live và trợ live</div>
+        </div>
+        <div class="user-box">
+          <div class="user-pill" id="clockPill">--:--:--</div>
+          <div class="user-pill" id="currentUserPill">---</div>
+          <button class="secondary" onclick="logout()">Đăng xuất</button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <div class="tabs" id="tabs"></div>
+      <div id="channelToolbar"></div>
+
+      <section id="view-dashboard" class="view">
+        <div id="statsGrid" class="grid stats-grid"></div>
+        <div class="section-head">
+          <div>
+            <h2>Ca live đang hoạt động</h2>
+            <p>Hiển thị tên host live, trợ live, trạng thái check-in và thời gian live realtime.</p>
+          </div>
+          <div class="toolbar">
+            <button onclick="openShiftModal()">+ Đăng ký ca live</button>
+            <button class="secondary" onclick="openChannelModal()">+ Thêm kênh bán</button>
+            <button class="secondary" onclick="openAccountModal()">+ Tạo tài khoản</button>
+          </div>
+        </div>
+        <div id="liveGrid" class="grid live-grid"></div>
+      </section>
+
+      <section id="view-myshift" class="view">
+        <div class="section-head">
+          <div>
+            <h2>Ca live của tôi</h2>
+            <p>Chụp check-in để bắt đầu live, sau đó kết thúc ca để hệ thống chốt thời gian thực tế.</p>
+          </div>
+        </div>
+        <div id="myShiftGrid" class="grid live-grid"></div>
+      </section>
+
+      <section id="view-register" class="view">
+        <div class="section-head">
+          <div>
+            <h2>Bảng đăng ký ca live</h2>
+            <p>Quản lý ngày, giờ live, kênh bán, host live và trợ live theo thời gian thực.</p>
+          </div>
+          <div class="toolbar">
+            <button onclick="openShiftModal()">+ Tạo ca live</button>
+            <button class="secondary" onclick="openChannelModal()">+ Thêm kênh bán</button>
+          </div>
+        </div>
+        <div id="registerTableWrap" class="table-scroll"></div>
+      </section>
+
+      <section id="view-accounts" class="view">
+        <div class="section-head">
+          <div>
+            <h2>Tài khoản nhân viên</h2>
+            <p>Tạo tài khoản host live, trợ live hoặc admin.</p>
+          </div>
+          <button onclick="openAccountModal()">+ Tạo tài khoản</button>
+        </div>
+        <div id="accountTableWrap" class="table-scroll"></div>
+      </section>
+
+      <section id="view-notes" class="view">
+        <div class="two-col">
+          <div class="card">
+            <div class="section-head" style="margin-top:0">
+              <div>
+                <h2>Ghi chú phát sinh theo ca</h2>
+                <p>Ghi lại lỗi kỹ thuật, vận hành, sản phẩm, kịch bản hoặc vấn đề khách hàng.</p>
+              </div>
+            </div>
+            <div class="form-grid two">
+              <div class="form-field">
+                <label>Ca live</label>
+                <select id="noteShiftSelect"></select>
+              </div>
+              <div class="form-field">
+                <label>Loại phát sinh</label>
+                <select id="noteType">
+                  <option>Vận hành</option>
+                  <option>Kỹ thuật</option>
+                  <option>Nhân sự</option>
+                  <option>Sản phẩm</option>
+                  <option>Kịch bản live</option>
+                  <option>Khách hàng</option>
+                  <option>Khác</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-field">
+              <label>Nội dung ghi chú</label>
+              <textarea id="noteContent" placeholder="Ví dụ: Host vào muộn 5 phút, trợ live mất mạng, xu tung chưa đúng thời điểm..."></textarea>
+            </div>
+            <button onclick="addNote()">Lưu ghi chú</button>
+          </div>
+
+          <div>
+            <div class="section-head" style="margin-top:0">
+              <div>
+                <h2>Danh sách ghi chú</h2>
+                <p>Các phát sinh mới nhất theo từng ca live.</p>
+              </div>
+            </div>
+            <div id="noteList" class="note-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-reports" class="view">
+        <div class="section-head">
+          <div>
+            <h2>Báo cáo sau live</h2>
+            <p>Bảng báo cáo có thời gian thực tế host/trợ live và toàn bộ chỉ số vận hành sau ca.</p>
+          </div>
+          <button onclick="exportXLS()">Xuất XLS</button>
+        </div>
+        <div id="reportWrap" class="table-scroll"></div>
+      </section>
+    </main>
+  </section>
+
+  <div id="channelModal" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h3>Quản lý kênh bán</h3>
+          <div class="meta">Admin thêm kênh bán mới, sau đó kênh sẽ xuất hiện trong đăng ký ca live, lọc dashboard và báo cáo.</div>
+        </div>
+        <button class="close" onclick="closeModal('channelModal')">×</button>
+      </div>
+      <div class="form-grid two">
+        <div class="form-field">
+          <label>Tên kênh bán mới</label>
+          <input id="newChannelName" placeholder="Ví dụ: Gooby TikTok, Rouya Shopee, Lazada..." onkeydown="if(event.key==='Enter'){saveNewChannel()}"/>
+        </div>
+        <div class="form-field">
+          <label>&nbsp;</label>
+          <button type="button" onclick="saveNewChannel()">+ Lưu kênh bán</button>
+        </div>
+      </div>
+      <div class="warning-note">
+        Kênh bán do admin thêm sẽ được lưu lại trong dữ liệu hệ thống và dùng được ngay khi tạo ca live mới. Host/trợ live chỉ được chọn kênh có sẵn, không được tự thêm kênh.
+      </div>
+      <div class="section-head" style="margin-bottom:10px">
+        <div>
+          <h2 style="font-size:18px">Danh sách kênh hiện có</h2>
+          <p>Số ca live theo từng kênh.</p>
+        </div>
+      </div>
+      <div id="channelListWrap" class="table-scroll"></div>
+    </div>
+  </div>
+
+  <div id="accountModal" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h3 id="accountModalTitle">Tạo tài khoản</h3>
+          <div class="meta">Tài khoản được lưu trong database demo LocalStorage</div>
+        </div>
+        <button class="close" onclick="closeModal('accountModal')">×</button>
+      </div>
+      <input type="hidden" id="accountId"/>
+      <div class="form-grid two">
+        <div class="form-field">
+          <label>Họ tên</label>
+          <input id="accountName" placeholder="Ví dụ: Nguyễn A"/>
+        </div>
+        <div class="form-field">
+          <label>Tên đăng nhập</label>
+          <input id="accountUsername" placeholder="Ví dụ: host01"/>
+        </div>
+        <div class="form-field">
+          <label>Mật khẩu</label>
+          <input id="accountPassword" type="password" placeholder="Để trống nếu không đổi khi sửa"/>
+        </div>
+        <div class="form-field">
+          <label>Vai trò</label>
+          <select id="accountRole">
+            <option value="host">Host live</option>
+            <option value="support">Trợ live</option>
+            <option value="admin">Admin / Leader</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Shop phụ trách</label>
+          <select id="accountShop"></select>
+        </div>
+        <div class="form-field">
+          <label>Trạng thái</label>
+          <select id="accountStatus">
+            <option value="active">Đang hoạt động</option>
+            <option value="locked">Khóa tài khoản</option>
+          </select>
+        </div>
+      </div>
+      <div class="actions">
+        <button onclick="saveAccount()">Lưu tài khoản</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="shiftModal" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h3 id="shiftModalTitle">Đăng ký ca live</h3>
+          <div class="meta">Tạo lịch live có ngày, giờ, host live và trợ live</div>
+        </div>
+        <button class="close" onclick="closeModal('shiftModal')">×</button>
+      </div>
+      <input type="hidden" id="shiftId"/>
+      <div class="form-grid three">
+        <div class="form-field">
+          <label>Ngày live</label>
+          <input id="shiftDate" type="date"/>
+        </div>
+        <div class="form-field">
+          <label>Giờ bắt đầu dự kiến</label>
+          <input id="shiftStart" type="time"/>
+        </div>
+        <div class="form-field">
+          <label>Giờ kết thúc dự kiến</label>
+          <input id="shiftEnd" type="time"/>
+        </div>
+        <div class="form-field">
+          <label>Shop / Kênh</label>
+          <select id="shiftShop"></select>
+          <button id="shiftAddChannelBtn" type="button" class="small secondary" style="margin-top:8px" onclick="openChannelModal()">+ Thêm kênh mới</button>
+        </div>
+        <div class="form-field">
+          <label>Host live</label>
+          <select id="shiftHost"></select>
+        </div>
+        <div class="form-field">
+          <label>Trợ live</label>
+          <select id="shiftSupport"></select>
+        </div>
+      </div>
+      <div class="form-field">
+        <label>Mục tiêu / ghi chú ca</label>
+        <textarea id="shiftGoal" placeholder="Ví dụ: Ca này đẩy voucher, xu, combo chủ lực, ưu tiên sản phẩm Gooby Extra..."></textarea>
+      </div>
+      <div class="actions">
+        <button onclick="saveShift()">Lưu ca live</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="checkinModal" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h3>Chụp check-in = Bắt đầu live</h3>
+          <div class="meta" id="checkinMeta">---</div>
+        </div>
+        <button class="close" onclick="closeCheckinModal()">×</button>
+      </div>
+      <input type="hidden" id="checkinShiftId"/>
+      <input type="hidden" id="checkinRole"/>
+      <div class="camera-box">
+        <div>
+          <video id="cameraVideo" autoplay playsinline></video>
+          <div class="actions">
+            <button onclick="capturePhoto()">Chụp ảnh</button>
+            <button class="gray" onclick="startCamera()">Mở lại camera</button>
+          </div>
+        </div>
+        <div>
+          <canvas id="cameraCanvas"></canvas>
+          <div class="warning-note">
+            Sau khi xác nhận check-in, ca live sẽ chuyển sang <b>đang hoạt động</b> và bắt đầu tính thời gian realtime cho đúng người check-in.
+          </div>
+        </div>
+      </div>
+      <div class="form-field">
+        <label>Ghi chú check-in nếu có</label>
+        <textarea id="checkinNote" placeholder="Ví dụ: Đã setup máy, ánh sáng, sản phẩm, voucher, xu..."></textarea>
+      </div>
+      <div class="actions">
+        <button class="green" onclick="confirmCheckin()">Xác nhận bắt đầu live</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="endModal" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h3>Kết thúc ca live</h3>
+          <div class="meta" id="endMeta">---</div>
+        </div>
+        <button class="close" onclick="closeModal('endModal')">×</button>
+      </div>
+      <input type="hidden" id="endShiftId"/>
+      <input type="hidden" id="endRole"/>
+      <div class="warning-note" id="endDurationText">Thời gian live sẽ được chốt vào báo cáo.</div>
+      <div class="form-field">
+        <label>Ghi chú khi kết thúc nếu có</label>
+        <textarea id="endNote" placeholder="Ví dụ: Kết thúc đúng giờ, phát sinh lỗi mạng, khách hỏi nhiều về giá..."></textarea>
+      </div>
+      <div class="actions">
+        <button class="red" onclick="confirmEndLive()">Xác nhận kết thúc ca live</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="reportModal" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h3>Nhập báo cáo sau live</h3>
+          <div class="meta" id="reportMeta">---</div>
+        </div>
+        <button class="close" onclick="closeModal('reportModal')">×</button>
+      </div>
+      <input type="hidden" id="reportShiftId"/>
+      <div class="form-grid four">
+        <div class="form-field">
+          <label>GMV</label>
+          <input id="reportGMV" type="number" min="0" oninput="autoAOV()"/>
+        </div>
+        <div class="form-field">
+          <label>Đơn hàng</label>
+          <input id="reportOrders" type="number" min="0" oninput="autoAOV()"/>
+        </div>
+        <div class="form-field">
+          <label>Xu đã tung</label>
+          <input id="reportCoins" type="number" min="0"/>
+        </div>
+        <div class="form-field">
+          <label>CTR</label>
+          <input id="reportCTR" placeholder="Ví dụ: 8.5%"/>
+        </div>
+        <div class="form-field">
+          <label>CO</label>
+          <input id="reportCO" placeholder="Ví dụ: 3.2%"/>
+        </div>
+        <div class="form-field">
+          <label>View</label>
+          <input id="reportView" type="number" min="0"/>
+        </div>
+        <div class="form-field">
+          <label>AOV</label>
+          <input id="reportAOV" type="number" min="0"/>
+        </div>
+        <div class="form-field">
+          <label>Lượt add to cart</label>
+          <input id="reportATC" type="number" min="0"/>
+        </div>
+        <div class="form-field">
+          <label>Lượt bình luận</label>
+          <input id="reportComments" type="number" min="0"/>
+        </div>
+        <div class="form-field">
+          <label>Thời gian xem trung bình</label>
+          <input id="reportAvgWatch" placeholder="Ví dụ: 1 phút 35 giây"/>
+        </div>
+      </div>
+      <div class="form-field">
+        <label>Ghi chú tổng kết sau live</label>
+        <textarea id="reportNote" placeholder="Ví dụ: Combo bán tốt, xu tung hiệu quả, cần tăng CTA add to cart ở ca sau..."></textarea>
+      </div>
+      <div class="actions">
+        <button class="blue" onclick="submitReport()">Lưu báo cáo sau live</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="photoModal" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h3>Ảnh check-in</h3>
+          <div class="meta" id="photoMeta">---</div>
+        </div>
+        <button class="close" onclick="closeModal('photoModal')">×</button>
+      </div>
+      <img id="photoPreview" class="photo large" alt="Ảnh check-in"/>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const DB_KEY = "live_realtime_dashboard_v3";
+    const SESSION_KEY = "live_realtime_user_v3";
+
+    let db = null;
+    let currentUser = null;
+    let activeView = "dashboard";
+    let selectedChannel = "all";
+    let cameraStream = null;
+    let capturedPhoto = "";
+
+    function id(){ return "id_" + Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
+    function todayISO(){ return new Date().toISOString().slice(0,10); }
+    function nowTs(){ return Date.now(); }
+    function nowText(){
+      return new Date().toLocaleString("vi-VN",{hour:"2-digit",minute:"2-digit",second:"2-digit",day:"2-digit",month:"2-digit",year:"numeric"});
+    }
+    function clockText(){ return new Date().toLocaleString("vi-VN",{hour:"2-digit",minute:"2-digit",second:"2-digit",day:"2-digit",month:"2-digit",year:"numeric"}); }
+    function money(n){
+      n = Number(n || 0);
+      if(n >= 1000000){
+        const v = n/1000000;
+        return v.toFixed(Number.isInteger(v)?0:1)+"tr";
+      }
+      return n.toLocaleString("vi-VN")+"đ";
+    }
+    function roleLabel(role){
+      if(role === "admin") return "Admin / Leader";
+      if(role === "host") return "Host live";
+      if(role === "support") return "Trợ live";
+      return "Nhân viên";
+    }
+    async function hashPassword(text){
+      const data = new TextEncoder().encode(text);
+      const hash = await crypto.subtle.digest("SHA-256", data);
+      return [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,"0")).join("");
+    }
+
+    async function seedDB(){
+      const admin = id(), host1 = id(), support1 = id(), host2 = id(), support2 = id();
+      db = {
+        accounts:[
+          {id:admin,name:"Admin Live",username:"admin",passwordHash:await hashPassword("live123"),role:"admin",shop:"Tất cả",status:"active",createdAt:nowText()},
+          {id:host1,name:"Host 1",username:"host1",passwordHash:await hashPassword("123456"),role:"host",shop:"Gooby",status:"active",createdAt:nowText()},
+          {id:support1,name:"Trợ live 1",username:"tro1",passwordHash:await hashPassword("123456"),role:"support",shop:"Gooby",status:"active",createdAt:nowText()},
+          {id:host2,name:"Host 2",username:"host2",passwordHash:await hashPassword("123456"),role:"host",shop:"Rouya",status:"active",createdAt:nowText()},
+          {id:support2,name:"Trợ live 2",username:"tro2",passwordHash:await hashPassword("123456"),role:"support",shop:"Rouya",status:"active",createdAt:nowText()}
+        ],
+        shifts:[
+          {
+            id:id(),
+            date:todayISO(),
+            start:"08:00",
+            end:"12:00",
+            shop:"Gooby",
+            hostId:host1,
+            hostName:"Host 1",
+            supportId:support1,
+            supportName:"Trợ live 1",
+            goal:"Ca mẫu: Host check-in là bắt đầu live, trợ live check-in tính thời gian riêng.",
+            status:"scheduled",
+            host:{checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""},
+            support:{checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""},
+            report:null,
+            createdAt:nowText()
+          }
+        ],
+        notes:[],
+        channels:["Gooby","Rouya","Lazy Mom","Cohee"]
+      };
+      saveDB();
+    }
+
+    async function loadDB(){
+      const raw = localStorage.getItem(DB_KEY);
+      if(!raw){
+        await seedDB();
+      }else{
+        try{ db = JSON.parse(raw); }
+        catch(e){ await seedDB(); }
+      }
+      if(!db.channels || !Array.isArray(db.channels)) db.channels = ["Gooby","Rouya","Lazy Mom","Cohee"];
+      db.shifts.forEach(s=>{ if(!s.shop) s.shop = "Khác"; });
+      const userId = sessionStorage.getItem(SESSION_KEY);
+      currentUser = db.accounts.find(a=>a.id === userId) || null;
+    }
+    function saveDB(){ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
+
+    function toast(msg){
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.add("active");
+      setTimeout(()=>el.classList.remove("active"),1900);
+    }
+
+    function isAdmin(){ return currentUser && currentUser.role === "admin"; }
+    function isParticipant(shift){
+      return currentUser && (shift.hostId === currentUser.id || shift.supportId === currentUser.id);
+    }
+    function userRoleInShift(shift){
+      if(!currentUser) return "";
+      if(shift.hostId === currentUser.id) return "host";
+      if(shift.supportId === currentUser.id) return "support";
+      return "";
+    }
+    function roleNameInShift(role){ return role === "host" ? "Host live" : "Trợ live"; }
+
+    async function login(){
+      const username = document.getElementById("loginUsername").value.trim();
+      const password = document.getElementById("loginPassword").value;
+      if(!username || !password) return toast("Nhập tài khoản và mật khẩu");
+      const user = db.accounts.find(a=>a.username.toLowerCase() === username.toLowerCase());
+      if(!user) return toast("Tài khoản không tồn tại");
+      if(user.status !== "active") return toast("Tài khoản đang bị khóa");
+      const hash = await hashPassword(password);
+      if(hash !== user.passwordHash) return toast("Sai mật khẩu");
+      currentUser = user;
+      sessionStorage.setItem(SESSION_KEY, user.id);
+      activeView = isAdmin() ? "dashboard" : "myshift";
+      renderApp();
+      toast("Đăng nhập thành công");
+    }
+    function logout(){
+      sessionStorage.removeItem(SESSION_KEY);
+      currentUser = null;
+      stopCamera();
+      renderApp();
+    }
+
+    function renderApp(){
+      if(!currentUser){
+        document.getElementById("loginPage").classList.remove("hidden");
+        document.getElementById("appPage").classList.add("hidden");
+        return;
+      }
+      document.getElementById("loginPage").classList.add("hidden");
+      document.getElementById("appPage").classList.remove("hidden");
+      document.getElementById("currentUserPill").textContent = `${currentUser.name} · ${roleLabel(currentUser.role)}`;
+      document.getElementById("headerSubtitle").textContent = isAdmin()
+        ? "Admin quản lý tài khoản, đăng ký ca live, báo cáo realtime"
+        : "Nhân viên check-in để bắt đầu live, kết thúc để chốt thời gian thực tế";
+      renderTabs();
+      switchView(activeView);
+    }
+
+    function renderTabs(){
+      const tabs = isAdmin()
+        ? [["dashboard","Dashboard realtime"],["register","Đăng ký ca live"],["accounts","Tài khoản"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"]]
+        : [["myshift","Ca live của tôi"],["register","Đăng ký ca live"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"]];
+      if(!tabs.some(t=>t[0] === activeView)) activeView = tabs[0][0];
+      document.getElementById("tabs").innerHTML = tabs.map(t=>`
+        <button class="tab ${activeView===t[0]?"active":""}" onclick="switchView('${t[0]}')">${t[1]}</button>
+      `).join("");
+    }
+
+    function switchView(view){
+      activeView = view;
+      renderTabs();
+      document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+      const target = document.getElementById("view-"+view);
+      if(target) target.classList.add("active");
+      renderContent();
+    }
+
+    function renderContent(){
+      renderChannelToolbar();
+      renderDashboard();
+      renderMyShift();
+      renderRegisterTable();
+      renderAccountTable();
+      renderNoteOptions();
+      renderNotes();
+      renderReports();
+    }
+
+
+    function getChannels(){
+      if(!db.channels || !Array.isArray(db.channels) || !db.channels.length){
+        db.channels = ["Gooby","Rouya","Lazy Mom","Cohee"];
+      }
+      // Tự đồng bộ thêm các kênh đang xuất hiện ở tài khoản/ca live cũ để không bị mất option.
+      const map = new Map();
+      db.channels.forEach(ch=>{
+        const clean = String(ch || "").trim();
+        if(clean) map.set(clean.toLowerCase(), clean);
+      });
+      (db.accounts || []).forEach(a=>{
+        const clean = String(a.shop || "").trim();
+        if(clean && clean !== "Tất cả") map.set(clean.toLowerCase(), clean);
+      });
+      (db.shifts || []).forEach(s=>{
+        const clean = String(s.shop || "").trim();
+        if(clean) map.set(clean.toLowerCase(), clean);
+      });
+      db.channels = Array.from(map.values()).sort((a,b)=>a.localeCompare(b,"vi"));
+      return db.channels;
+    }
+
+    function channelOptions(selected=""){
+      return getChannels().map(ch=>`<option value="${ch}" ${ch===selected?"selected":""}>${ch}</option>`).join("");
+    }
+
+    function getChannelFilteredShifts(shifts){
+      return selectedChannel === "all" ? shifts : shifts.filter(s=>s.shop === selectedChannel);
+    }
+
+    function renderChannelToolbar(){
+      const wrap = document.getElementById("channelToolbar");
+      if(!wrap || !currentUser) return;
+      const baseShifts = isAdmin() ? db.shifts : db.shifts.filter(s=>isParticipant(s));
+      const total = selectedChannel === "all" ? baseShifts.length : baseShifts.filter(s=>s.shop === selectedChannel).length;
+      const active = baseShifts.filter(s=>computeShiftStatus(s).value === "active" && (selectedChannel === "all" || s.shop === selectedChannel)).length;
+      const reported = baseShifts.filter(s=>s.report && (selectedChannel === "all" || s.shop === selectedChannel)).length;
+      wrap.innerHTML = `
+        <div class="card" style="margin-bottom:16px">
+          <div class="section-head" style="margin:0;align-items:center">
+            <div>
+              <h2 style="font-size:18px">Lọc theo kênh bán</h2>
+              <p>Kênh đang chọn có <b>${total}</b> ca live, <b>${active}</b> ca đang hoạt động, <b>${reported}</b> ca đã báo cáo.</p>
+            </div>
+            <div class="toolbar">
+              <select id="channelFilterSelect" style="min-width:220px" onchange="setChannelFilter(this.value)">
+                <option value="all" ${selectedChannel==="all"?"selected":""}>Tất cả kênh bán</option>
+                ${getChannels().map(ch=>`<option value="${ch}" ${selectedChannel===ch?"selected":""}>${ch}</option>`).join("")}
+              </select>
+              ${isAdmin()?`<button class="secondary" onclick="openChannelModal()">+ Thêm kênh bán</button>`:""}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function setChannelFilter(value){
+      selectedChannel = value || "all";
+      renderContent();
+    }
+
+    function openChannelModal(){
+      if(!isAdmin()) return toast("Chỉ admin được thêm kênh bán");
+      document.getElementById("newChannelName").value = "";
+      renderChannelList();
+      openModal("channelModal");
+      setTimeout(()=>document.getElementById("newChannelName")?.focus(), 60);
+    }
+
+    function addSalesChannel(){
+      // Giữ lại tên hàm cũ để các nút/phiên bản cũ vẫn hoạt động.
+      openChannelModal();
+    }
+
+    function saveNewChannel(){
+      if(!isAdmin()) return toast("Chỉ admin được thêm kênh bán");
+      const input = document.getElementById("newChannelName");
+      const clean = String(input.value || "").trim().replace(/\s+/g," ");
+      if(!clean) return toast("Nhập tên kênh bán trước");
+      if(getChannels().some(ch=>ch.toLowerCase() === clean.toLowerCase())) return toast("Kênh bán đã tồn tại");
+      db.channels.push(clean);
+      selectedChannel = clean;
+      saveDB();
+      input.value = "";
+      renderContent();
+      renderChannelList();
+      refreshOpenChannelSelects(clean);
+      toast("Đã thêm kênh bán mới");
+    }
+
+    function renderChannelList(){
+      const wrap = document.getElementById("channelListWrap");
+      if(!wrap) return;
+      const rows = getChannels().map(ch=>{
+        const shiftCount = db.shifts.filter(s=>s.shop === ch).length;
+        const accountCount = db.accounts.filter(a=>a.shop === ch).length;
+        return `<tr>
+          <td><strong>${ch}</strong></td>
+          <td>${shiftCount}</td>
+          <td>${accountCount}</td>
+          <td>
+            <button class="small" onclick="selectChannelFromList('${encodeURIComponent(ch)}')">Lọc kênh này</button>
+            <button class="small red" ${shiftCount || accountCount ? "disabled" : ""} onclick="deleteSalesChannel('${encodeURIComponent(ch)}')">Xóa</button>
+          </td>
+        </tr>`;
+      }).join("");
+      wrap.innerHTML = `<table>
+        <thead><tr><th>Kênh bán</th><th>Số ca live</th><th>Số tài khoản phụ trách</th><th>Thao tác</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="4">Chưa có kênh bán</td></tr>`}</tbody>
+      </table>`;
+    }
+
+    function selectChannelFromList(encodedName){
+      selectedChannel = decodeURIComponent(encodedName);
+      closeModal("channelModal");
+      renderContent();
+      toast("Đã lọc theo kênh bán");
+    }
+
+    function deleteSalesChannel(encodedName){
+      if(!isAdmin()) return;
+      const name = decodeURIComponent(encodedName);
+      const usedByShift = db.shifts.some(s=>s.shop === name);
+      const usedByAccount = db.accounts.some(a=>a.shop === name);
+      if(usedByShift || usedByAccount) return toast("Không thể xóa kênh đang có ca live hoặc tài khoản phụ trách");
+      if(!confirm(`Xóa kênh bán ${name}?`)) return;
+      db.channels = getChannels().filter(ch=>ch !== name);
+      if(selectedChannel === name) selectedChannel = "all";
+      saveDB();
+      renderContent();
+      renderChannelList();
+      toast("Đã xóa kênh bán");
+    }
+
+    function refreshOpenChannelSelects(selected=""){
+      const shiftShop = document.getElementById("shiftShop");
+      if(shiftShop) shiftShop.innerHTML = channelOptions(selected || shiftShop.value);
+      const accountShop = document.getElementById("accountShop");
+      if(accountShop) accountShop.innerHTML = channelOptions(selected || accountShop.value);
+      const filterSelect = document.getElementById("channelFilterSelect");
+      if(filterSelect) filterSelect.value = selectedChannel;
+    }
+
+    function actualMs(item){
+      if(!item || !item.checkinTs) return 0;
+      const end = item.endTs || nowTs();
+      return Math.max(0, end - item.checkinTs);
+    }
+    function formatDuration(ms){
+      if(!ms) return "00:00:00";
+      let total = Math.floor(ms/1000);
+      const h = Math.floor(total/3600); total %= 3600;
+      const m = Math.floor(total/60);
+      const s = total % 60;
+      return [h,m,s].map(x=>String(x).padStart(2,"0")).join(":");
+    }
+
+    function computeShiftStatus(shift){
+      const hostLive = shift.host.checkinTs && !shift.host.endTs;
+      const supportLive = shift.support.checkinTs && !shift.support.endTs;
+      const anyStarted = shift.host.checkinTs || shift.support.checkinTs;
+      const anyLive = hostLive || supportLive;
+      const bothEndedOrNotStarted =
+        (!shift.host.checkinTs || shift.host.endTs) &&
+        (!shift.support.checkinTs || shift.support.endTs);
+
+      if(shift.report) return {label:"Đã báo cáo",color:"purple",card:"reported",value:"reported"};
+      if(anyLive) return {label:"Đang hoạt động",color:"green",card:"active",value:"active"};
+      if(anyStarted && bothEndedOrNotStarted) return {label:"Đã kết thúc live",color:"blue",card:"ended",value:"ended"};
+      return {label:"Chưa check-in",color:"gray",card:"waiting",value:"scheduled"};
+    }
+
+    function canCheckin(shift, role){
+      if(!role) return false;
+      const item = shift[role];
+      return !item.checkinTs;
+    }
+    function canEndLive(shift, role){
+      if(!role) return false;
+      const item = shift[role];
+      return item.checkinTs && !item.endTs;
+    }
+    function canReport(shift){
+      const st = computeShiftStatus(shift).value;
+      return isAdmin() || isParticipant(shift) ? (st === "ended" || st === "reported") : false;
+    }
+
+    function renderDashboard(){
+      if(!isAdmin()) return;
+      const dashboardShifts = getChannelFilteredShifts(db.shifts);
+      const active = dashboardShifts.filter(s=>computeShiftStatus(s).value === "active").length;
+      const ended = dashboardShifts.filter(s=>computeShiftStatus(s).value === "ended").length;
+      const reported = dashboardShifts.filter(s=>s.report).length;
+      const totalGMV = dashboardShifts.reduce((sum,s)=>sum+Number(s.report?.gmv||0),0);
+      const totalOrders = dashboardShifts.reduce((sum,s)=>sum+Number(s.report?.orders||0),0);
+      const stats = [
+        ["Ca theo kênh", dashboardShifts.length, selectedChannel === "all" ? "Tất cả kênh bán" : selectedChannel],
+        ["Ca đang live", active, "Đã check-in, đang tính giờ"],
+        ["Ca đã kết thúc", ended, "Chờ nhập báo cáo sau live"],
+        ["Tổng GMV", money(totalGMV), "Theo kênh đang lọc"],
+        ["Tổng đơn", totalOrders.toLocaleString("vi-VN"), "Theo kênh đang lọc"]
+      ];
+      document.getElementById("statsGrid").innerHTML = stats.map(s=>`
+        <div class="card"><div class="stat-title">${s[0]}</div><div class="stat-value">${s[1]}</div><div class="stat-note">${s[2]}</div></div>
+      `).join("");
+
+      const shifts = [...dashboardShifts].sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start));
+      document.getElementById("liveGrid").innerHTML = shifts.length ? shifts.map(renderShiftCard).join("") : `<div class="empty">Chưa có ca live nào theo kênh bán đang chọn.</div>`;
+    }
+
+    function renderMyShift(){
+      if(isAdmin()) return;
+      const shifts = getChannelFilteredShifts(db.shifts.filter(s=>isParticipant(s))).sort((a,b)=>(b.date+b.start).localeCompare(a.date+a.start));
+      document.getElementById("myShiftGrid").innerHTML = shifts.length ? shifts.map(renderShiftCard).join("") : `<div class="empty">Bạn chưa được đăng ký ca live nào.</div>`;
+    }
+
+    function renderShiftCard(shift){
+      const st = computeShiftStatus(shift);
+      const myRole = userRoleInShift(shift);
+      const showHostEnd = shift.host.checkinTs ? formatDuration(actualMs(shift.host)) : "Chưa bắt đầu";
+      const showSupportEnd = shift.support.checkinTs ? formatDuration(actualMs(shift.support)) : "Chưa bắt đầu";
+      const report = shift.report || {};
+      const aov = report.aov || (report.orders ? Math.round(report.gmv / report.orders) : 0);
+
+      let alertColor = "gray", alertText = "Ca chưa check-in.";
+      if(st.value === "active"){ alertColor = "green"; alertText = "Ca live đang hoạt động, thời gian đang được tính realtime."; }
+      if(st.value === "ended"){ alertColor = "blue"; alertText = "Ca live đã kết thúc, có thể nhập báo cáo sau live."; }
+      if(st.value === "reported"){ alertColor = "purple"; alertText = "Ca đã có báo cáo sau live."; }
+
+      const roleActions = [];
+      if((isAdmin() || myRole === "host") && canCheckin(shift,"host")){
+        roleActions.push(`<button class="small green" onclick="openCheckinModal('${shift.id}','host')">Host check-in</button>`);
+      }
+      if((isAdmin() || myRole === "host") && canEndLive(shift,"host")){
+        roleActions.push(`<button class="small red" onclick="openEndModal('${shift.id}','host')">Kết thúc host live</button>`);
+      }
+      if((isAdmin() || myRole === "support") && canCheckin(shift,"support")){
+        roleActions.push(`<button class="small green" onclick="openCheckinModal('${shift.id}','support')">Trợ live check-in</button>`);
+      }
+      if((isAdmin() || myRole === "support") && canEndLive(shift,"support")){
+        roleActions.push(`<button class="small red" onclick="openEndModal('${shift.id}','support')">Kết thúc trợ live</button>`);
+      }
+
+      return `
+        <div class="card live-card ${st.card}">
+          <div class="person-row">
+            <div class="person-info">
+              <div class="avatar">${shift.hostName.slice(0,1).toUpperCase()}</div>
+              <div>
+                <div class="name">${shift.hostName}</div>
+                <div class="meta">Host live · ${shift.shop} · ${shift.date} · ${shift.start}-${shift.end}</div>
+                <div class="meta">Trợ live: <b>${shift.supportName}</b></div>
+              </div>
+            </div>
+            <span class="badge ${st.color}">${st.label}</span>
+          </div>
+
+          <div class="metrics">
+            <div class="metric">
+              <div class="metric-label">Host live thực tế</div>
+              <div class="metric-value timer">${showHostEnd}</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Trợ live thực tế</div>
+              <div class="metric-value timer">${showSupportEnd}</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">GMV</div>
+              <div class="metric-value">${money(report.gmv || 0)}</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Đơn hàng</div>
+              <div class="metric-value">${Number(report.orders || 0).toLocaleString("vi-VN")}</div>
+            </div>
+          </div>
+
+          <div class="metrics">
+            <div class="metric">
+              <div class="metric-label">View</div>
+              <div class="metric-value">${Number(report.view || 0).toLocaleString("vi-VN")}</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">CTR</div>
+              <div class="metric-value">${report.ctr || "-"}</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">CO</div>
+              <div class="metric-value">${report.co || "-"}</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">AOV</div>
+              <div class="metric-value">${money(aov || 0)}</div>
+            </div>
+          </div>
+
+          <div class="alert-box ${alertColor}">${alertText}</div>
+
+          <div class="meta">
+            Host check-in: ${shift.host.checkinTime || "-"} ${shift.host.photo ? `· <a href="#" onclick="openPhoto('${shift.id}','host');return false;">Xem ảnh</a>` : ""}<br/>
+            Trợ live check-in: ${shift.support.checkinTime || "-"} ${shift.support.photo ? `· <a href="#" onclick="openPhoto('${shift.id}','support');return false;">Xem ảnh</a>` : ""}
+          </div>
+
+          <div class="actions">
+            ${roleActions.join("")}
+            <button class="small secondary" onclick="prepareQuickNote('${shift.id}')">Ghi chú phát sinh</button>
+            ${canReport(shift) ? `<button class="small blue" onclick="openReportModal('${shift.id}')">Nhập báo cáo</button>` : ""}
+            ${isAdmin() ? `<button class="small" onclick="editShift('${shift.id}')">Sửa ca</button><button class="small red" onclick="deleteShift('${shift.id}')">Xóa</button>` : ""}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderRegisterTable(){
+      const sourceShifts = isAdmin() ? db.shifts : db.shifts.filter(s=>isParticipant(s));
+      const filtered = getChannelFilteredShifts(sourceShifts);
+      if(!filtered.length){
+        document.getElementById("registerTableWrap").innerHTML = `<div class="empty">Chưa có ca live nào theo kênh bán đang chọn.</div>`;
+        return;
+      }
+      const rows = [...filtered].sort((a,b)=>(b.date+b.start).localeCompare(a.date+a.start));
+      document.getElementById("registerTableWrap").innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Ngày</th><th>Giờ dự kiến</th><th>Kênh bán</th><th>Host live</th><th>Trợ live</th><th>Host thực tế</th><th>Trợ thực tế</th><th>Trạng thái</th><th>Ghi chú</th><th>Thao tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(s=>{
+              const st = computeShiftStatus(s);
+              return `
+              <tr>
+                <td>${s.date}</td>
+                <td>${s.start}-${s.end}</td>
+                <td><span class="badge purple">${s.shop || "Khác"}</span></td>
+                <td><strong>${s.hostName}</strong></td>
+                <td>${s.supportName}</td>
+                <td>${formatDuration(actualMs(s.host))}</td>
+                <td>${formatDuration(actualMs(s.support))}</td>
+                <td><span class="badge ${st.color}">${st.label}</span></td>
+                <td>${s.goal || "-"}</td>
+                <td>
+                  ${isAdmin()?`<button class="small" onclick="editShift('${s.id}')">Sửa</button> <button class="small red" onclick="deleteShift('${s.id}')">Xóa</button>`:"Không có quyền xóa"}
+                </td>
+              </tr>`;
+            }).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderAccountTable(){
+      if(!isAdmin()) return;
+      document.getElementById("accountTableWrap").innerHTML = `
+        <table>
+          <thead><tr><th>Họ tên</th><th>Tài khoản</th><th>Vai trò</th><th>Shop</th><th>Trạng thái</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead>
+          <tbody>
+            ${db.accounts.map(a=>`
+              <tr>
+                <td><strong>${a.name}</strong></td>
+                <td>${a.username}</td>
+                <td>${roleLabel(a.role)}</td>
+                <td>${a.shop}</td>
+                <td><span class="badge ${a.status==="active"?"green":"red"}">${a.status==="active"?"Đang hoạt động":"Đang khóa"}</span></td>
+                <td>${a.createdAt || "-"}</td>
+                <td>
+                  <button class="small" onclick="editAccount('${a.id}')">Sửa</button>
+                  ${a.id !== currentUser.id ? `<button class="small red" onclick="deleteAccount('${a.id}')">Xóa</button>` : ""}
+                </td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function visibleShifts(){
+      const shifts = isAdmin() ? db.shifts : db.shifts.filter(s=>isParticipant(s));
+      return getChannelFilteredShifts(shifts);
+    }
+    function renderNoteOptions(){
+      const shifts = visibleShifts();
+      document.getElementById("noteShiftSelect").innerHTML = shifts.map(s=>`
+        <option value="${s.id}">${s.date} · ${s.shop || "Khác"} · ${s.start}-${s.end} · Host: ${s.hostName} · Trợ: ${s.supportName}</option>
+      `).join("") || `<option value="">Chưa có ca live</option>`;
+    }
+    function renderNotes(){
+      const ids = new Set(visibleShifts().map(s=>s.id));
+      const notes = isAdmin() ? db.notes : db.notes.filter(n=>ids.has(n.shiftId));
+      if(!notes.length){
+        document.getElementById("noteList").innerHTML = `<div class="empty">Chưa có ghi chú phát sinh.</div>`;
+        return;
+      }
+      document.getElementById("noteList").innerHTML = [...notes].reverse().map(n=>`
+        <div class="note-item">
+          <div class="note-top"><span><strong>${n.shiftLabel}</strong> · ${n.type}</span><span>${n.time}</span></div>
+          <div>${n.content}</div>
+          <div class="meta" style="margin-top:6px">Người ghi: ${n.createdBy}</div>
+        </div>
+      `).join("");
+    }
+
+    function renderReports(){
+      const shifts = visibleShifts();
+      if(!shifts.length){
+        document.getElementById("reportWrap").innerHTML = `<div class="empty">Chưa có ca live để báo cáo theo kênh bán đang chọn.</div>`;
+        return;
+      }
+      const totalGMV = shifts.reduce((sum,s)=>sum+Number(s.report?.gmv||0),0);
+      const totalOrders = shifts.reduce((sum,s)=>sum+Number(s.report?.orders||0),0);
+      const totalCoins = shifts.reduce((sum,s)=>sum+Number(s.report?.coins||0),0);
+      const totalViews = shifts.reduce((sum,s)=>sum+Number(s.report?.view||0),0);
+      const avgAOV = totalOrders ? Math.round(totalGMV/totalOrders) : 0;
+      document.getElementById("reportWrap").innerHTML = `
+        <div class="grid stats-grid" style="margin-bottom:16px">
+          <div class="card"><div class="stat-title">Kênh đang lọc</div><div class="stat-value" style="font-size:22px">${selectedChannel === "all" ? "Tất cả" : selectedChannel}</div><div class="stat-note">${shifts.length} ca live</div></div>
+          <div class="card"><div class="stat-title">Tổng GMV</div><div class="stat-value">${money(totalGMV)}</div><div class="stat-note">Theo kênh đang lọc</div></div>
+          <div class="card"><div class="stat-title">Tổng đơn</div><div class="stat-value">${totalOrders.toLocaleString("vi-VN")}</div><div class="stat-note">Theo kênh đang lọc</div></div>
+          <div class="card"><div class="stat-title">Xu đã tung</div><div class="stat-value">${totalCoins.toLocaleString("vi-VN")}</div><div class="stat-note">Tổng xu</div></div>
+          <div class="card"><div class="stat-title">AOV trung bình</div><div class="stat-value">${money(avgAOV)}</div><div class="stat-note">GMV / đơn</div></div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Ngày</th><th>Kênh bán</th><th>Host live</th><th>Trợ live</th>
+              <th>Thời gian thực tế host live</th><th>Thời gian thực tế trợ live</th>
+              <th>GMV</th><th>Đơn hàng</th><th>Xu đã tung</th><th>CTR</th><th>CO</th><th>View</th>
+              <th>AOV</th><th>Lượt add to cart</th><th>Lượt bình luận</th><th>Thời gian xem TB</th><th>Trạng thái</th><th>Thao tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${shifts.map(s=>{
+              const st = computeShiftStatus(s);
+              const r = s.report || {};
+              const aov = r.aov || (r.orders ? Math.round(r.gmv / r.orders) : 0);
+              return `
+                <tr>
+                  <td>${s.date}<br/><span class="meta">${s.start}-${s.end}</span></td>
+                  <td><span class="badge purple">${s.shop || "Khác"}</span></td>
+                  <td><strong>${s.hostName}</strong></td>
+                  <td>${s.supportName}</td>
+                  <td>${formatDuration(actualMs(s.host))}</td>
+                  <td>${formatDuration(actualMs(s.support))}</td>
+                  <td>${money(r.gmv || 0)}</td>
+                  <td>${Number(r.orders || 0).toLocaleString("vi-VN")}</td>
+                  <td>${Number(r.coins || 0).toLocaleString("vi-VN")}</td>
+                  <td>${r.ctr || "-"}</td>
+                  <td>${r.co || "-"}</td>
+                  <td>${Number(r.view || 0).toLocaleString("vi-VN")}</td>
+                  <td>${money(aov || 0)}</td>
+                  <td>${Number(r.atc || 0).toLocaleString("vi-VN")}</td>
+                  <td>${Number(r.comments || 0).toLocaleString("vi-VN")}</td>
+                  <td>${r.avgWatch || "-"}</td>
+                  <td><span class="badge ${st.color}">${st.label}</span></td>
+                  <td>${canReport(s) ? `<button class="small blue" onclick="openReportModal('${s.id}')">Nhập/Sửa</button>` : "-"}</td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function openModal(mid){ document.getElementById(mid).classList.add("active"); }
+    function closeModal(mid){ document.getElementById(mid).classList.remove("active"); }
+
+    function accountOptions(roleFilter, selectedId=""){
+      const list = db.accounts.filter(a=>a.status==="active" && (roleFilter ? a.role===roleFilter : true));
+      return list.map(a=>`<option value="${a.id}" ${a.id===selectedId?"selected":""}>${a.name} · ${roleLabel(a.role)} · ${a.shop}</option>`).join("");
+    }
+
+    function openAccountModal(){
+      if(!isAdmin()) return toast("Bạn không có quyền tạo tài khoản");
+      document.getElementById("accountModalTitle").textContent = "Tạo tài khoản";
+      document.getElementById("accountId").value = "";
+      document.getElementById("accountName").value = "";
+      document.getElementById("accountUsername").value = "";
+      document.getElementById("accountUsername").disabled = false;
+      document.getElementById("accountPassword").value = "";
+      document.getElementById("accountRole").value = "host";
+      document.getElementById("accountShop").innerHTML = channelOptions("Gooby");
+      document.getElementById("accountStatus").value = "active";
+      openModal("accountModal");
+    }
+    function editAccount(accountId){
+      if(!isAdmin()) return;
+      const a = db.accounts.find(x=>x.id===accountId);
+      if(!a) return;
+      document.getElementById("accountModalTitle").textContent = "Sửa tài khoản";
+      document.getElementById("accountId").value = a.id;
+      document.getElementById("accountName").value = a.name;
+      document.getElementById("accountUsername").value = a.username;
+      document.getElementById("accountUsername").disabled = true;
+      document.getElementById("accountPassword").value = "";
+      document.getElementById("accountRole").value = a.role;
+      document.getElementById("accountShop").innerHTML = channelOptions(a.shop);
+      document.getElementById("accountStatus").value = a.status;
+      openModal("accountModal");
+    }
+    async function saveAccount(){
+      if(!isAdmin()) return;
+      const accountId = document.getElementById("accountId").value;
+      const name = document.getElementById("accountName").value.trim();
+      const username = document.getElementById("accountUsername").value.trim();
+      const password = document.getElementById("accountPassword").value;
+      if(!name || !username) return toast("Nhập đủ họ tên và tài khoản");
+      if(!accountId && !password) return toast("Tài khoản mới cần mật khẩu");
+      const duplicate = db.accounts.some(a=>a.username.toLowerCase()===username.toLowerCase() && a.id!==accountId);
+      if(duplicate) return toast("Tên đăng nhập đã tồn tại");
+
+      if(accountId){
+        const a = db.accounts.find(x=>x.id===accountId);
+        a.name = name;
+        a.role = document.getElementById("accountRole").value;
+        a.shop = document.getElementById("accountShop").value;
+        a.status = document.getElementById("accountStatus").value;
+        if(password) a.passwordHash = await hashPassword(password);
+        db.shifts.forEach(s=>{
+          if(s.hostId === a.id) s.hostName = a.name;
+          if(s.supportId === a.id) s.supportName = a.name;
+        });
+      }else{
+        db.accounts.push({
+          id:id(),name,username,passwordHash:await hashPassword(password),
+          role:document.getElementById("accountRole").value,
+          shop:document.getElementById("accountShop").value,
+          status:document.getElementById("accountStatus").value,
+          createdAt:nowText()
+        });
+      }
+      saveDB();
+      closeModal("accountModal");
+      renderContent();
+      toast("Đã lưu tài khoản");
+    }
+    function deleteAccount(accountId){
+      if(!isAdmin()) return;
+      const a = db.accounts.find(x=>x.id===accountId);
+      if(!a) return;
+      if(!confirm(`Xóa tài khoản ${a.name}?`)) return;
+      db.accounts = db.accounts.filter(x=>x.id!==accountId);
+      saveDB();
+      renderContent();
+      toast("Đã xóa tài khoản");
+    }
+
+    function openShiftModal(){
+      document.getElementById("shiftModalTitle").textContent = "Đăng ký ca live";
+      document.getElementById("shiftId").value = "";
+      document.getElementById("shiftDate").value = todayISO();
+      document.getElementById("shiftStart").value = "08:00";
+      document.getElementById("shiftEnd").value = "12:00";
+      const defaultChannel = selectedChannel !== "all" ? selectedChannel : (currentUser.shop && currentUser.shop !== "Tất cả" ? currentUser.shop : getChannels()[0]);
+      document.getElementById("shiftShop").innerHTML = channelOptions(defaultChannel);
+      document.getElementById("shiftAddChannelBtn").classList.toggle("hidden", !isAdmin());
+      const hostSelected = currentUser.role === "host" ? currentUser.id : "";
+      const supportSelected = currentUser.role === "support" ? currentUser.id : "";
+      document.getElementById("shiftHost").innerHTML = accountOptions("host", hostSelected);
+      document.getElementById("shiftSupport").innerHTML = accountOptions("support", supportSelected);
+      document.getElementById("shiftGoal").value = "";
+      openModal("shiftModal");
+    }
+    function editShift(shiftId){
+      if(!isAdmin()) return;
+      const s = db.shifts.find(x=>x.id===shiftId);
+      if(!s) return;
+      document.getElementById("shiftModalTitle").textContent = "Sửa đăng ký ca live";
+      document.getElementById("shiftId").value = s.id;
+      document.getElementById("shiftDate").value = s.date;
+      document.getElementById("shiftStart").value = s.start;
+      document.getElementById("shiftEnd").value = s.end;
+      document.getElementById("shiftShop").innerHTML = channelOptions(s.shop);
+      document.getElementById("shiftAddChannelBtn").classList.toggle("hidden", !isAdmin());
+      document.getElementById("shiftHost").innerHTML = accountOptions("host", s.hostId);
+      document.getElementById("shiftSupport").innerHTML = accountOptions("support", s.supportId);
+      document.getElementById("shiftGoal").value = s.goal || "";
+      openModal("shiftModal");
+    }
+    function saveShift(){
+      const shiftId = document.getElementById("shiftId").value;
+      if(shiftId && !isAdmin()) return toast("Bạn không có quyền sửa ca live");
+      const hostId = document.getElementById("shiftHost").value;
+      const supportId = document.getElementById("shiftSupport").value;
+      const host = db.accounts.find(a=>a.id===hostId);
+      const support = db.accounts.find(a=>a.id===supportId);
+      if(!host || !support) return toast("Cần chọn đủ host live và trợ live");
+      if(!isAdmin() && hostId !== currentUser.id && supportId !== currentUser.id){
+        return toast("Bạn chỉ được đăng ký ca có tên mình là host hoặc trợ live");
+      }
+
+      const base = {
+        date:document.getElementById("shiftDate").value,
+        start:document.getElementById("shiftStart").value,
+        end:document.getElementById("shiftEnd").value,
+        shop:document.getElementById("shiftShop").value,
+        hostId:host.id,
+        hostName:host.name,
+        supportId:support.id,
+        supportName:support.name,
+        goal:document.getElementById("shiftGoal").value.trim()
+      };
+      if(!base.date || !base.start || !base.end) return toast("Nhập đủ ngày và giờ live");
+
+      if(shiftId){
+        const s = db.shifts.find(x=>x.id===shiftId);
+        Object.assign(s, base);
+      }else{
+        db.shifts.push({
+          id:id(),...base,status:"scheduled",
+          host:{checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""},
+          support:{checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""},
+          report:null,
+          createdById: currentUser.id,
+          createdByName: currentUser.name,
+          createdAt:nowText()
+        });
+      }
+      if(!getChannels().includes(base.shop)) db.channels.push(base.shop);
+      saveDB();
+      closeModal("shiftModal");
+      renderContent();
+      toast("Đã lưu đăng ký ca live");
+    }
+    function deleteShift(shiftId){
+      if(!isAdmin()) return;
+      if(!confirm("Xóa ca live này?")) return;
+      db.shifts = db.shifts.filter(s=>s.id!==shiftId);
+      db.notes = db.notes.filter(n=>n.shiftId!==shiftId);
+      saveDB();
+      renderContent();
+      toast("Đã xóa ca live");
+    }
+
+    async function openCheckinModal(shiftId, role){
+      const s = db.shifts.find(x=>x.id===shiftId);
+      if(!s) return;
+      if(!isAdmin() && userRoleInShift(s)!==role) return toast("Bạn không có quyền check-in vị trí này");
+      if(!canCheckin(s,role)) return toast("Vị trí này đã check-in rồi");
+
+      document.getElementById("checkinShiftId").value = shiftId;
+      document.getElementById("checkinRole").value = role;
+      document.getElementById("checkinMeta").textContent = `${roleNameInShift(role)} · ${role==="host"?s.hostName:s.supportName} · ${s.date} · ${s.start}-${s.end}`;
+      document.getElementById("checkinNote").value = "";
+      capturedPhoto = "";
+
+      const canvas = document.getElementById("cameraCanvas");
+      const ctx = canvas.getContext("2d");
+      canvas.width = 640; canvas.height = 480;
+      ctx.fillStyle = "#f3f4f6"; ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle = "#667085"; ctx.font = "20px Arial"; ctx.fillText("Chưa chụp ảnh", 240, 240);
+
+      openModal("checkinModal");
+      await startCamera();
+    }
+    async function startCamera(){
+      stopCamera();
+      try{
+        cameraStream = await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+        document.getElementById("cameraVideo").srcObject = cameraStream;
+      }catch(e){
+        toast("Không mở được camera. Hãy kiểm tra quyền camera của trình duyệt.");
+      }
+    }
+    function stopCamera(){
+      if(cameraStream){
+        cameraStream.getTracks().forEach(t=>t.stop());
+        cameraStream = null;
+      }
+    }
+    function closeCheckinModal(){
+      stopCamera();
+      closeModal("checkinModal");
+    }
+    function capturePhoto(){
+      const video = document.getElementById("cameraVideo");
+      const canvas = document.getElementById("cameraCanvas");
+      const w = video.videoWidth || 640;
+      const h = video.videoHeight || 480;
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video,0,0,w,h);
+      ctx.fillStyle = "rgba(0,0,0,.58)";
+      ctx.fillRect(0,h-48,w,48);
+      ctx.fillStyle = "#fff";
+      ctx.font = Math.max(16,Math.round(w/34)) + "px Arial";
+      ctx.fillText("Bắt đầu live: " + nowText(), 16, h-18);
+      capturedPhoto = canvas.toDataURL("image/jpeg",.82);
+      toast("Đã chụp ảnh check-in");
+    }
+    function confirmCheckin(){
+      const shiftId = document.getElementById("checkinShiftId").value;
+      const role = document.getElementById("checkinRole").value;
+      const s = db.shifts.find(x=>x.id===shiftId);
+      if(!s) return;
+      if(!capturedPhoto) return toast("Bạn cần chụp ảnh trước");
+      const item = s[role];
+      item.checkinTs = nowTs();
+      item.checkinTime = nowText();
+      item.photo = capturedPhoto;
+      item.checkinNote = document.getElementById("checkinNote").value.trim();
+
+      if(item.checkinNote){
+        db.notes.push({
+          id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${s.hostName}/${s.supportName}`,
+          type:`Check-in ${roleNameInShift(role)}`,content:item.checkinNote,createdBy:currentUser.name,time:nowText()
+        });
+      }
+      saveDB();
+      closeCheckinModal();
+      renderContent();
+      toast("Đã bắt đầu live và tính giờ realtime");
+    }
+
+    function openEndModal(shiftId, role){
+      const s = db.shifts.find(x=>x.id===shiftId);
+      if(!s) return;
+      if(!isAdmin() && userRoleInShift(s)!==role) return toast("Bạn không có quyền kết thúc vị trí này");
+      if(!canEndLive(s,role)) return toast("Vị trí này chưa live hoặc đã kết thúc");
+      document.getElementById("endShiftId").value = shiftId;
+      document.getElementById("endRole").value = role;
+      document.getElementById("endMeta").textContent = `${roleNameInShift(role)} · ${role==="host"?s.hostName:s.supportName}`;
+      document.getElementById("endDurationText").innerHTML = `Thời gian đang tính: <b>${formatDuration(actualMs(s[role]))}</b>. Sau khi xác nhận sẽ chốt vào báo cáo.`;
+      document.getElementById("endNote").value = "";
+      openModal("endModal");
+    }
+    function confirmEndLive(){
+      const shiftId = document.getElementById("endShiftId").value;
+      const role = document.getElementById("endRole").value;
+      const s = db.shifts.find(x=>x.id===shiftId);
+      if(!s) return;
+      const item = s[role];
+      item.endTs = nowTs();
+      item.endTime = nowText();
+      item.endNote = document.getElementById("endNote").value.trim();
+      if(item.endNote){
+        db.notes.push({
+          id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${s.hostName}/${s.supportName}`,
+          type:`Kết thúc ${roleNameInShift(role)}`,content:item.endNote,createdBy:currentUser.name,time:nowText()
+        });
+      }
+      saveDB();
+      closeModal("endModal");
+      renderContent();
+      toast("Đã kết thúc live và chốt thời gian thực tế");
+    }
+
+    function prepareQuickNote(shiftId){
+      const s = db.shifts.find(x=>x.id===shiftId);
+      if(!s) return;
+      if(!isAdmin() && !isParticipant(s)) return toast("Bạn không có quyền ghi chú ca này");
+      switchView("notes");
+      setTimeout(()=>{
+        document.getElementById("noteShiftSelect").value = shiftId;
+        document.getElementById("noteContent").focus();
+      },60);
+    }
+    function addNote(){
+      const shiftId = document.getElementById("noteShiftSelect").value;
+      const s = db.shifts.find(x=>x.id===shiftId);
+      if(!s) return toast("Chọn ca live hợp lệ");
+      if(!isAdmin() && !isParticipant(s)) return toast("Bạn không có quyền ghi chú ca này");
+      const content = document.getElementById("noteContent").value.trim();
+      if(!content) return toast("Nhập nội dung ghi chú");
+      db.notes.push({
+        id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${s.hostName}/${s.supportName}`,
+        type:document.getElementById("noteType").value,content,createdBy:currentUser.name,time:nowText()
+      });
+      document.getElementById("noteContent").value = "";
+      saveDB();
+      renderContent();
+      toast("Đã lưu ghi chú phát sinh");
+    }
+
+    function openReportModal(shiftId){
+      const s = db.shifts.find(x=>x.id===shiftId);
+      if(!s) return;
+      if(!canReport(s)) return toast("Chỉ nhập báo cáo sau khi ca đã kết thúc live");
+      document.getElementById("reportShiftId").value = shiftId;
+      document.getElementById("reportMeta").textContent = `${s.date} · ${s.start}-${s.end} · Host ${s.hostName} · Trợ ${s.supportName}`;
+      const r = s.report || {};
+      document.getElementById("reportGMV").value = r.gmv || 0;
+      document.getElementById("reportOrders").value = r.orders || 0;
+      document.getElementById("reportCoins").value = r.coins || 0;
+      document.getElementById("reportCTR").value = r.ctr || "";
+      document.getElementById("reportCO").value = r.co || "";
+      document.getElementById("reportView").value = r.view || 0;
+      document.getElementById("reportAOV").value = r.aov || (r.orders ? Math.round(r.gmv/r.orders) : 0);
+      document.getElementById("reportATC").value = r.atc || 0;
+      document.getElementById("reportComments").value = r.comments || 0;
+      document.getElementById("reportAvgWatch").value = r.avgWatch || "";
+      document.getElementById("reportNote").value = r.note || "";
+      openModal("reportModal");
+    }
+    function autoAOV(){
+      const gmv = Number(document.getElementById("reportGMV").value || 0);
+      const orders = Number(document.getElementById("reportOrders").value || 0);
+      if(orders > 0) document.getElementById("reportAOV").value = Math.round(gmv/orders);
+    }
+    function submitReport(){
+      const shiftId = document.getElementById("reportShiftId").value;
+      const s = db.shifts.find(x=>x.id===shiftId);
+      if(!s || !canReport(s)) return;
+      s.report = {
+        hostActualMs:actualMs(s.host),
+        supportActualMs:actualMs(s.support),
+        gmv:Number(document.getElementById("reportGMV").value || 0),
+        orders:Number(document.getElementById("reportOrders").value || 0),
+        coins:Number(document.getElementById("reportCoins").value || 0),
+        ctr:document.getElementById("reportCTR").value.trim(),
+        co:document.getElementById("reportCO").value.trim(),
+        view:Number(document.getElementById("reportView").value || 0),
+        aov:Number(document.getElementById("reportAOV").value || 0),
+        atc:Number(document.getElementById("reportATC").value || 0),
+        comments:Number(document.getElementById("reportComments").value || 0),
+        avgWatch:document.getElementById("reportAvgWatch").value.trim(),
+        note:document.getElementById("reportNote").value.trim(),
+        submittedAt:nowText(),
+        submittedBy:currentUser.name
+      };
+      if(s.report.note){
+        db.notes.push({
+          id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${s.hostName}/${s.supportName}`,
+          type:"Báo cáo sau live",content:s.report.note,createdBy:currentUser.name,time:nowText()
+        });
+      }
+      saveDB();
+      closeModal("reportModal");
+      renderContent();
+      toast("Đã lưu báo cáo sau live");
+    }
+
+    function openPhoto(shiftId, role){
+      const s = db.shifts.find(x=>x.id===shiftId);
+      if(!s || !s[role].photo) return;
+      document.getElementById("photoPreview").src = s[role].photo;
+      document.getElementById("photoMeta").textContent = `${roleNameInShift(role)} · ${role==="host"?s.hostName:s.supportName} · ${s[role].checkinTime}`;
+      openModal("photoModal");
+    }
+
+
+    function escapeHtml(value){
+      return String(value ?? "")
+        .replaceAll("&","&amp;")
+        .replaceAll("<","&lt;")
+        .replaceAll(">","&gt;")
+        .replaceAll('"',"&quot;");
+    }
+
+    function exportXLS(){
+      const shifts = visibleShifts();
+
+      const headers = [
+        "Ngày",
+        "Giờ dự kiến",
+        "Kênh bán",
+        "Host live",
+        "Trợ live",
+        "Thời gian thực tế host live",
+        "Thời gian thực tế trợ live",
+        "GMV",
+        "Đơn hàng",
+        "Xu đã tung",
+        "CTR",
+        "CO",
+        "View",
+        "AOV",
+        "Lượt add to cart",
+        "Lượt bình luận",
+        "Thời gian xem trung bình",
+        "Trạng thái"
+      ];
+
+      const rows = shifts.map(s=>{
+        const st = computeShiftStatus(s);
+        const r = s.report || {};
+        const aov = r.aov || (r.orders ? Math.round(r.gmv/r.orders) : 0);
+        return [
+          s.date,
+          `${s.start}-${s.end}`,
+          s.shop,
+          s.hostName,
+          s.supportName,
+          formatDuration(actualMs(s.host)),
+          formatDuration(actualMs(s.support)),
+          r.gmv || 0,
+          r.orders || 0,
+          r.coins || 0,
+          r.ctr || "",
+          r.co || "",
+          r.view || 0,
+          aov || 0,
+          r.atc || 0,
+          r.comments || 0,
+          r.avgWatch || "",
+          st.label
+        ];
+      });
+
+      const tableHtml = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office"
+              xmlns:x="urn:schemas-microsoft-com:office:excel"
+              xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            table{border-collapse:collapse;font-family:Arial,sans-serif;font-size:12px}
+            th{background:#ff7a2f;color:#ffffff;font-weight:bold}
+            th,td{border:1px solid #999;padding:8px;text-align:left;vertical-align:middle}
+          </style>
+        </head>
+        <body>
+          <h2>Báo cáo live realtime</h2>
+          <table>
+            <thead>
+              <tr>${headers.map(h=>`<th>${escapeHtml(h)}</th>`).join("")}</tr>
+            </thead>
+            <tbody>
+              ${rows.map(row=>`
+                <tr>
+                  ${row.map(cell=>`<td>${escapeHtml(cell)}</td>`).join("")}
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </body>
+        </html>
+      `;
+
+      const blob = new Blob([String.fromCharCode(0xFEFF) + tableHtml], {
+        type: "application/vnd.ms-excel;charset=utf-8"
+      });
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `bao-cao-live-${todayISO()}.xls`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast("Đã xuất file .xls");
+    }
+
+
+    document.addEventListener("keydown", e=>{
+      if(e.key==="Escape"){
+        document.querySelectorAll(".modal-backdrop.active").forEach(m=>m.classList.remove("active"));
+        stopCamera();
+      }
+    });
+
+    setInterval(()=>{
+      document.getElementById("clockPill").textContent = clockText();
+      if(currentUser){
+        renderDashboard();
+        renderMyShift();
+        renderRegisterTable();
+        renderReports();
+      }
+    },1000);
+
+    window.addEventListener("storage", e=>{
+      if(e.key===DB_KEY) loadDB().then(renderApp);
+    });
+
+    async function init(){
+      await loadDB();
+      renderApp();
+      document.getElementById("clockPill").textContent = clockText();
+    }
+    init();
+  </script>
+</body>
+</html>
