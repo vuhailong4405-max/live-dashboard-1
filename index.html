@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Live Realtime Dashboard V3</title>
+  <title>Live Realtime Dashboard V8 - KPI & History</title>
   <style>
     :root{
       --bg:#f5f6fb;
@@ -351,6 +351,16 @@
         </div>
         <div id="reportWrap" class="table-scroll"></div>
       </section>
+
+      <section id="view-history" class="view">
+        <div class="section-head">
+          <div>
+            <h2>Lịch sử chỉnh sửa</h2>
+            <p>Lưu lại từng lần sửa ca live và sửa báo cáo: ai sửa, sửa lúc nào, sửa nội dung gì.</p>
+          </div>
+        </div>
+        <div id="historyWrap"></div>
+      </section>
     </main>
   </section>
 
@@ -629,6 +639,7 @@
     let currentUser = null;
     let activeView = "dashboard";
     let selectedChannel = "all";
+    let historyShiftFilter = "all";
     let cameraStream = null;
     let capturedPhoto = "";
 
@@ -689,6 +700,7 @@
           }
         ],
         notes:[],
+        histories:[],
         channels:["Gooby","Rouya","Lazy Mom","Cohee"]
       };
       saveDB();
@@ -703,6 +715,7 @@
         catch(e){ await seedDB(); }
       }
       if(!db.channels || !Array.isArray(db.channels)) db.channels = ["Gooby","Rouya","Lazy Mom","Cohee"];
+      if(!db.histories || !Array.isArray(db.histories)) db.histories = [];
       db.accounts.forEach(a=>{ if(a.kpiGmv === undefined) a.kpiGmv = 0; });
       db.shifts.forEach(s=>{ if(!s.shop) s.shop = "Khác"; });
       const userId = sessionStorage.getItem(SESSION_KEY);
@@ -769,8 +782,8 @@
 
     function renderTabs(){
       const tabs = isAdmin()
-        ? [["dashboard","Dashboard realtime"],["register","Đăng ký ca live"],["accounts","Tài khoản"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"]]
-        : [["myshift","Ca live của tôi"],["register","Đăng ký ca live"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"]];
+        ? [["dashboard","Dashboard realtime"],["register","Đăng ký ca live"],["accounts","Tài khoản"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["history","Lịch sử chỉnh sửa"]]
+        : [["myshift","Ca live của tôi"],["register","Đăng ký ca live"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["history","Lịch sử chỉnh sửa"]];
       if(!tabs.some(t=>t[0] === activeView)) activeView = tabs[0][0];
       document.getElementById("tabs").innerHTML = tabs.map(t=>`
         <button class="tab ${activeView===t[0]?"active":""}" onclick="switchView('${t[0]}')">${t[1]}</button>
@@ -795,6 +808,7 @@
       renderNoteOptions();
       renderNotes();
       renderReports();
+      renderHistory();
     }
 
 
@@ -1140,7 +1154,7 @@
                 <td><span class="badge ${st.color}">${st.label}</span></td>
                 <td>${s.goal || "-"}</td>
                 <td>
-                  ${isAdmin()?`<button class="small" onclick="editShift('${s.id}')">Sửa</button> <button class="small red" onclick="deleteShift('${s.id}')">Xóa</button>`:"Không có quyền xóa"}
+                  ${isAdmin()?`<button class="small" onclick="editShift('${s.id}')">Sửa</button> <button class="small red" onclick="deleteShift('${s.id}')">Xóa</button> <button class="small secondary" onclick="openHistoryForShift('${s.id}')">Lịch sử</button>`:`<button class="small secondary" onclick="openHistoryForShift('${s.id}')">Lịch sử</button>`}
                 </td>
               </tr>`;
             }).join("")}
@@ -1224,6 +1238,161 @@
             <div class="progress-bar" style="width:${pct}%"></div>
           </div>
         </div>
+      `;
+    }
+
+    const SHIFT_HISTORY_FIELDS = [
+      {key:"date",label:"Ngày live"},
+      {key:"start",label:"Giờ bắt đầu dự kiến"},
+      {key:"end",label:"Giờ kết thúc dự kiến"},
+      {key:"shop",label:"Kênh bán"},
+      {key:"hostName",label:"Host live"},
+      {key:"supportName",label:"Trợ live"},
+      {key:"goal",label:"Mục tiêu / ghi chú ca"}
+    ];
+
+    const REPORT_HISTORY_FIELDS = [
+      {key:"hostActualMs",label:"Thời gian thực tế host live",format:"duration"},
+      {key:"supportActualMs",label:"Thời gian thực tế trợ live",format:"duration"},
+      {key:"gmv",label:"GMV",format:"money"},
+      {key:"orders",label:"Đơn hàng",format:"number"},
+      {key:"coins",label:"Xu đã tung",format:"number"},
+      {key:"ctr",label:"CTR"},
+      {key:"co",label:"CO"},
+      {key:"view",label:"View",format:"number"},
+      {key:"aov",label:"AOV",format:"money"},
+      {key:"atc",label:"Lượt add to cart",format:"number"},
+      {key:"comments",label:"Lượt bình luận",format:"number"},
+      {key:"avgWatch",label:"Thời gian xem trung bình"},
+      {key:"note",label:"Ghi chú tổng kết"}
+    ];
+
+    function cloneData(value){
+      return value == null ? null : JSON.parse(JSON.stringify(value));
+    }
+
+    function shiftLabel(shift){
+      if(!shift) return "Ca live không xác định";
+      return `${shift.date || "-"} · ${shift.shop || "Khác"} · ${shift.start || "-"}-${shift.end || "-"} · ${shift.hostName || "-"}/${shift.supportName || "-"}`;
+    }
+
+    function normalizeHistoryValue(value){
+      if(value === undefined || value === null || value === "") return "";
+      return String(value).trim();
+    }
+
+    function formatHistoryValue(value, format){
+      if(value === undefined || value === null || value === "") return "-";
+      if(format === "money") return money(value);
+      if(format === "number") return Number(value || 0).toLocaleString("vi-VN");
+      if(format === "duration") return formatDuration(Number(value || 0));
+      return String(value);
+    }
+
+    function buildHistoryChanges(before, after, fields){
+      const oldData = before || {};
+      const newData = after || {};
+      return fields.map(f=>{
+        const oldRaw = oldData[f.key];
+        const newRaw = newData[f.key];
+        if(normalizeHistoryValue(oldRaw) === normalizeHistoryValue(newRaw)) return null;
+        return {
+          field:f.key,
+          label:f.label,
+          from:formatHistoryValue(oldRaw, f.format),
+          to:formatHistoryValue(newRaw, f.format)
+        };
+      }).filter(Boolean);
+    }
+
+    function recordEditHistory({shift,type,action,before,after,fields}){
+      if(!shift) return false;
+      if(!db.histories || !Array.isArray(db.histories)) db.histories = [];
+      const changes = buildHistoryChanges(before, after, fields);
+      if(!changes.length) return false;
+      db.histories.push({
+        id:id(),
+        shiftId:shift.id,
+        shiftLabel:shiftLabel(shift),
+        type,
+        action,
+        changes,
+        editedById:currentUser?.id || "",
+        editedBy:currentUser?.name || "Không xác định",
+        editedRole:currentUser ? roleLabel(currentUser.role) : "",
+        time:nowText(),
+        ts:nowTs()
+      });
+      return true;
+    }
+
+    function visibleHistory(){
+      if(!db.histories || !Array.isArray(db.histories)) db.histories = [];
+      const shifts = visibleShifts();
+      const ids = new Set(shifts.map(s=>s.id));
+      if(historyShiftFilter !== "all" && !ids.has(historyShiftFilter)) historyShiftFilter = "all";
+      return db.histories
+        .filter(h=>ids.has(h.shiftId) && (historyShiftFilter === "all" || h.shiftId === historyShiftFilter))
+        .sort((a,b)=>Number(b.ts || 0) - Number(a.ts || 0));
+    }
+
+    function setHistoryFilter(value){
+      historyShiftFilter = value || "all";
+      renderHistory();
+    }
+
+    function openHistoryForShift(shiftId){
+      historyShiftFilter = shiftId || "all";
+      switchView("history");
+    }
+
+    function renderHistory(){
+      const wrap = document.getElementById("historyWrap");
+      if(!wrap || !currentUser) return;
+      const shifts = visibleShifts();
+      const histories = visibleHistory();
+      const options = shifts.map(s=>`<option value="${s.id}" ${historyShiftFilter===s.id?"selected":""}>${s.date} · ${s.shop || "Khác"} · ${s.start}-${s.end} · ${s.hostName}/${s.supportName}</option>`).join("");
+      wrap.innerHTML = `
+        <div class="card" style="margin-bottom:16px">
+          <div class="section-head" style="margin:0;align-items:center">
+            <div>
+              <h2 style="font-size:18px">Bộ lọc lịch sử</h2>
+              <p>${isAdmin() ? "Admin xem được toàn bộ lịch sử theo ca đang lọc." : "Nhân viên chỉ xem lịch sử của những ca có tên mình."}</p>
+            </div>
+            <div class="toolbar">
+              <select style="min-width:280px" onchange="setHistoryFilter(this.value)">
+                <option value="all" ${historyShiftFilter==="all"?"selected":""}>Tất cả ca live đang hiển thị</option>
+                ${options}
+              </select>
+            </div>
+          </div>
+        </div>
+        ${histories.length ? histories.map(h=>`
+          <div class="card" style="margin-bottom:14px">
+            <div class="section-head" style="margin:0 0 12px">
+              <div>
+                <h2 style="font-size:18px">${escapeHtml(h.action || "Chỉnh sửa")}</h2>
+                <p>${escapeHtml(h.shiftLabel || "-")}</p>
+              </div>
+              <span class="badge ${h.type === "report" ? "blue" : "purple"}">${h.type === "report" ? "Báo cáo" : "Ca live"}</span>
+            </div>
+            <div class="meta" style="margin-bottom:10px">Người sửa: <b>${escapeHtml(h.editedBy || "-")}</b> · ${escapeHtml(h.editedRole || "")} · Thời gian: <b>${escapeHtml(h.time || "-")}</b></div>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>Nội dung</th><th>Trước khi sửa</th><th>Sau khi sửa</th></tr></thead>
+                <tbody>
+                  ${(h.changes || []).map(c=>`
+                    <tr>
+                      <td><strong>${escapeHtml(c.label || c.field || "-")}</strong></td>
+                      <td>${escapeHtml(c.from || "-")}</td>
+                      <td>${escapeHtml(c.to || "-")}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `).join("") : `<div class="empty">Chưa có lịch sử chỉnh sửa nào.</div>`}
       `;
     }
     function renderNoteOptions(){
@@ -1374,7 +1543,10 @@
                   <td>${Number(r.comments || 0).toLocaleString("vi-VN")}</td>
                   <td>${r.avgWatch || "-"}</td>
                   <td><span class="badge ${st.color}">${st.label}</span></td>
-                  <td>${canReport(s) ? `<button class="small blue" onclick="openReportModal('${s.id}')">Nhập/Sửa</button>` : "-"}</td>
+                  <td>
+                    ${canReport(s) ? `<button class="small blue" onclick="openReportModal('${s.id}')">Nhập/Sửa</button>` : ""}
+                    <button class="small secondary" onclick="openHistoryForShift('${s.id}')">Lịch sử</button>
+                  </td>
                 </tr>
               `;
             }).join("")}
@@ -1533,7 +1705,24 @@
 
       if(shiftId){
         const s = db.shifts.find(x=>x.id===shiftId);
+        const before = {
+          date:s.date,
+          start:s.start,
+          end:s.end,
+          shop:s.shop,
+          hostName:s.hostName,
+          supportName:s.supportName,
+          goal:s.goal || ""
+        };
         Object.assign(s, base);
+        recordEditHistory({
+          shift:s,
+          type:"shift",
+          action:"Sửa ca live",
+          before,
+          after:base,
+          fields:SHIFT_HISTORY_FIELDS
+        });
       }else{
         db.shifts.push({
           id:id(),...base,status:"scheduled",
@@ -1730,7 +1919,8 @@
       const shiftId = document.getElementById("reportShiftId").value;
       const s = db.shifts.find(x=>x.id===shiftId);
       if(!s || !canReport(s)) return;
-      s.report = {
+      const oldReport = cloneData(s.report);
+      const newReport = {
         hostActualMs:actualMs(s.host),
         supportActualMs:actualMs(s.support),
         gmv:Number(document.getElementById("reportGMV").value || 0),
@@ -1745,8 +1935,18 @@
         avgWatch:document.getElementById("reportAvgWatch").value.trim(),
         note:document.getElementById("reportNote").value.trim(),
         submittedAt:nowText(),
-        submittedBy:currentUser.name
+        submittedBy:currentUser.name,
+        submittedById:currentUser.id
       };
+      s.report = newReport;
+      recordEditHistory({
+        shift:s,
+        type:"report",
+        action:oldReport ? "Sửa báo cáo sau live" : "Tạo báo cáo sau live",
+        before:oldReport || {},
+        after:newReport,
+        fields:REPORT_HISTORY_FIELDS
+      });
       if(s.report.note){
         db.notes.push({
           id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${s.hostName}/${s.supportName}`,
