@@ -38,6 +38,7 @@
     button.red{background:var(--red)}
     button.blue{background:var(--blue)}
     button.purple{background:var(--purple)}
+    button.yellow{background:var(--yellow)}
     button.small{font-size:12px;padding:7px 10px;border-radius:10px}
     button:disabled{opacity:.45;cursor:not-allowed;transform:none}
 
@@ -352,6 +353,16 @@
         <div id="reportWrap" class="table-scroll"></div>
       </section>
 
+      <section id="view-approvals" class="view">
+        <div class="section-head">
+          <div>
+            <h2>Duyệt yêu cầu sửa báo cáo</h2>
+            <p>Khi nhân viên đã gửi báo cáo rồi muốn sửa lại, yêu cầu sẽ hiện ở đây và chỉ admin duyệt mới cập nhật vào báo cáo chính.</p>
+          </div>
+        </div>
+        <div id="approvalWrap"></div>
+      </section>
+
       <section id="view-history" class="view">
         <div class="section-head">
           <div>
@@ -565,6 +576,7 @@
         <button class="close" onclick="closeModal('reportModal')">×</button>
       </div>
       <input type="hidden" id="reportShiftId"/>
+      <div id="reportApprovalNotice" class="warning-note hidden"></div>
       <div class="form-grid four">
         <div class="form-field">
           <label>GMV</label>
@@ -612,7 +624,7 @@
         <textarea id="reportNote" placeholder="Ví dụ: Combo bán tốt, xu tung hiệu quả, cần tăng CTA add to cart ở ca sau..."></textarea>
       </div>
       <div class="actions">
-        <button class="blue" onclick="submitReport()">Lưu báo cáo sau live</button>
+        <button id="reportSubmitBtn" class="blue" onclick="submitReport()">Lưu báo cáo sau live</button>
       </div>
     </div>
   </div>
@@ -735,6 +747,12 @@
       if(!db.channels || !Array.isArray(db.channels)) db.channels = ["Gooby","Rouya","Lazy Mom","Cohee"];
       if(!db.histories || !Array.isArray(db.histories)) db.histories = [];
       if(!db.dataLogs || !Array.isArray(db.dataLogs)) db.dataLogs = [];
+      if(!db.reportEditRequests || !Array.isArray(db.reportEditRequests)) db.reportEditRequests = [];
+      db.reportEditRequests.forEach(r=>{
+        if(!r.status) r.status = "pending";
+        if(!r.changes || !Array.isArray(r.changes)) r.changes = buildHistoryChanges(r.before || {}, r.after || {}, REPORT_HISTORY_FIELDS);
+        if(!r.participantIds || !Array.isArray(r.participantIds)) r.participantIds = [];
+      });
       db.accounts.forEach(a=>{
         if(a.kpiGmv === undefined) a.kpiGmv = 0;
         a.shops = normalizeShopList(a.shops && a.shops.length ? a.shops : a.shop);
@@ -835,6 +853,7 @@
         notes:[],
         histories:[],
         dataLogs:[],
+        reportEditRequests:[],
         channels:["Gooby","Rouya","Lazy Mom","Cohee"]
       };
       saveDB();
@@ -1026,8 +1045,9 @@
     }
 
     function renderTabs(){
+      const pendingCount = pendingReportEditRequests().length;
       const tabs = isAdmin()
-        ? [["dashboard","Dashboard realtime"],["register","Đăng ký ca live"],["accounts","Tài khoản"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["history","Lịch sử chỉnh sửa"]]
+        ? [["dashboard","Dashboard realtime"],["register","Đăng ký ca live"],["accounts","Tài khoản"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["approvals",`Duyệt sửa báo cáo${pendingCount ? " ("+pendingCount+")" : ""}`],["history","Lịch sử chỉnh sửa"]]
         : [["myshift","Ca live của tôi"],["register","Đăng ký ca live"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["history","Lịch sử chỉnh sửa"]];
       if(!tabs.some(t=>t[0] === activeView)) activeView = tabs[0][0];
       document.getElementById("tabs").innerHTML = tabs.map(t=>`
@@ -1053,6 +1073,7 @@
       renderNoteOptions();
       renderNotes();
       renderReports();
+      renderReportApprovals();
       renderHistory();
     }
 
@@ -1273,10 +1294,12 @@
       const reported = dashboardShifts.filter(s=>s.report).length;
       const totalGMV = dashboardShifts.reduce((sum,s)=>sum+Number(s.report?.gmv||0),0);
       const totalOrders = dashboardShifts.reduce((sum,s)=>sum+Number(s.report?.orders||0),0);
+      const pendingApprovals = pendingReportEditRequests().length;
       const stats = [
         ["Ca theo kênh", dashboardShifts.length, selectedChannel === "all" ? "Tất cả kênh bán" : selectedChannel],
         ["Ca đang live", active, "Đã check-in, đang tính giờ"],
         ["Ca đã kết thúc", ended, "Chờ nhập báo cáo sau live"],
+        ["Yêu cầu sửa báo cáo", pendingApprovals, pendingApprovals ? "Admin cần duyệt" : "Không có yêu cầu chờ duyệt"],
         ["Tổng GMV", money(totalGMV), "Theo kênh đang lọc"],
         ["Tổng đơn", totalOrders.toLocaleString("vi-VN"), "Theo kênh đang lọc"]
       ];
@@ -1307,6 +1330,7 @@
       if(st.value === "active"){ alertColor = "green"; alertText = "Ca live đang hoạt động, thời gian đang được tính realtime."; }
       if(st.value === "ended"){ alertColor = "blue"; alertText = "Ca live đã kết thúc, có thể nhập báo cáo sau live."; }
       if(st.value === "reported"){ alertColor = "purple"; alertText = "Ca đã có báo cáo sau live."; }
+      const pendingReq = currentUser ? getPendingReportEditRequest(shift.id, isAdmin() ? "" : currentUser.id) : null;
 
       const roleActions = [];
       if((isAdmin() || myRole === "host") && canCheckin(shift,"host")){
@@ -1374,7 +1398,7 @@
             </div>
           </div>
 
-          <div class="alert-box ${alertColor}">${alertText}</div>
+          <div class="alert-box ${alertColor}">${alertText}${pendingReq ? `<br/><b>Đang có yêu cầu sửa báo cáo chờ admin duyệt.</b>` : ""}</div>
 
           <div class="meta">
             Host check-in: ${shift.host.checkinTime || "-"} ${shift.host.photo ? `· <a href="#" onclick="openPhoto('${shift.id}','host');return false;">Xem ảnh</a>` : ""}<br/>
@@ -1384,7 +1408,7 @@
           <div class="actions">
             ${roleActions.join("")}
             <button class="small secondary" onclick="prepareQuickNote('${shift.id}')">Ghi chú phát sinh</button>
-            ${canReport(shift) ? `<button class="small blue" onclick="openReportModal('${shift.id}')">Nhập báo cáo</button>` : ""}
+            ${reportActionButton(shift)}
             ${isAdmin() ? `<button class="small" onclick="editShift('${shift.id}')">Sửa ca</button><button class="small red" onclick="deleteShift('${shift.id}')">Xóa</button>` : ""}
           </div>
         </div>
@@ -1699,6 +1723,209 @@
       `;
     }
 
+
+    function pendingReportEditRequests(){
+      if(!db || !Array.isArray(db.reportEditRequests)) return [];
+      return db.reportEditRequests.filter(r=>r.status === "pending");
+    }
+
+    function getPendingReportEditRequest(shiftId, requesterId=""){
+      if(!db || !Array.isArray(db.reportEditRequests)) return null;
+      return db.reportEditRequests.find(r=>
+        r.shiftId === shiftId &&
+        r.status === "pending" &&
+        (!requesterId || r.requestedById === requesterId)
+      ) || null;
+    }
+
+    function visibleReportEditRequests(status="all"){
+      if(!db.reportEditRequests || !Array.isArray(db.reportEditRequests)) db.reportEditRequests = [];
+      return db.reportEditRequests.filter(r=>{
+        if(status !== "all" && r.status !== status) return false;
+        if(isAdmin()) return true;
+        if(r.requestedById === currentUser.id) return true;
+        return (r.participantIds || []).includes(currentUser.id);
+      }).sort((a,b)=>Number(b.ts || 0) - Number(a.ts || 0));
+    }
+
+    function reportActionButton(shift){
+      if(!canReport(shift)) return "";
+      const pendingReq = currentUser ? getPendingReportEditRequest(shift.id, isAdmin() ? "" : currentUser.id) : null;
+      if(!isAdmin() && shift.report && pendingReq){
+        return `<button class="small yellow" onclick="openReportModal('${shift.id}')">Sửa yêu cầu chờ duyệt</button>`;
+      }
+      if(!isAdmin() && shift.report){
+        return `<button class="small blue" onclick="openReportModal('${shift.id}')">Yêu cầu sửa báo cáo</button>`;
+      }
+      return `<button class="small blue" onclick="openReportModal('${shift.id}')">${shift.report ? "Sửa báo cáo" : "Nhập báo cáo"}</button>`;
+    }
+
+    function createOrUpdateReportEditRequest(shift, beforeReport, afterReport, changes){
+      if(!db.reportEditRequests || !Array.isArray(db.reportEditRequests)) db.reportEditRequests = [];
+      let req = getPendingReportEditRequest(shift.id, currentUser.id);
+      const participantIds = [shift.hostId, shift.supportId, currentUser.id].filter(Boolean);
+      const payload = {
+        shiftId:shift.id,
+        shiftLabel:shiftLabel(shift),
+        before:cloneData(beforeReport || {}),
+        after:cloneData(afterReport || {}),
+        changes:changes || buildHistoryChanges(beforeReport || {}, afterReport || {}, REPORT_HISTORY_FIELDS),
+        participantIds:[...new Set(participantIds)],
+        requestedById:currentUser.id,
+        requestedByName:currentUser.name,
+        requestedRole:roleLabel(currentUser.role),
+        requestedAt:nowText(),
+        ts:nowTs(),
+        status:"pending"
+      };
+      if(req){
+        Object.assign(req, payload, {updatedExisting:true});
+      }else{
+        req = {id:id(), ...payload, updatedExisting:false};
+        db.reportEditRequests.push(req);
+      }
+      return req;
+    }
+
+    function approvalRequestBadge(status){
+      if(status === "approved") return `<span class="badge green">Đã duyệt</span>`;
+      if(status === "rejected") return `<span class="badge red">Đã từ chối</span>`;
+      return `<span class="badge yellow">Chờ duyệt</span>`;
+    }
+
+    function renderRequestChangesTable(req){
+      const changes = req.changes && req.changes.length ? req.changes : buildHistoryChanges(req.before || {}, req.after || {}, REPORT_HISTORY_FIELDS);
+      return `
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Nội dung</th><th>Đang lưu</th><th>Nhân viên muốn sửa thành</th></tr></thead>
+            <tbody>
+              ${changes.map(c=>`
+                <tr>
+                  <td><strong>${escapeHtml(c.label || c.field || "-")}</strong></td>
+                  <td>${escapeHtml(c.from || "-")}</td>
+                  <td>${escapeHtml(c.to || "-")}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderReportApprovals(){
+      const wrap = document.getElementById("approvalWrap");
+      if(!wrap || !currentUser) return;
+      if(!isAdmin()){
+        wrap.innerHTML = `<div class="empty">Chỉ tài khoản admin được duyệt yêu cầu sửa báo cáo.</div>`;
+        return;
+      }
+      const pending = visibleReportEditRequests("pending");
+      const reviewed = visibleReportEditRequests("all").filter(r=>r.status !== "pending").slice(0,50);
+      wrap.innerHTML = `
+        <div class="grid stats-grid" style="margin-bottom:16px">
+          <div class="card"><div class="stat-title">Yêu cầu chờ duyệt</div><div class="stat-value">${pending.length}</div><div class="stat-note">Nhân viên sửa báo cáo đã gửi</div></div>
+          <div class="card"><div class="stat-title">Đã duyệt</div><div class="stat-value">${visibleReportEditRequests("all").filter(r=>r.status === "approved").length}</div><div class="stat-note">Báo cáo đã cập nhật</div></div>
+          <div class="card"><div class="stat-title">Đã từ chối</div><div class="stat-value">${visibleReportEditRequests("all").filter(r=>r.status === "rejected").length}</div><div class="stat-note">Báo cáo giữ nguyên</div></div>
+        </div>
+        <div class="section-head" style="margin-top:0"><div><h2>Yêu cầu đang chờ duyệt</h2><p>Duyệt thì báo cáo chính mới được thay đổi.</p></div></div>
+        ${pending.length ? pending.map(req=>`
+          <div class="card" style="margin-bottom:14px">
+            <div class="section-head" style="margin:0 0 12px">
+              <div>
+                <h2 style="font-size:18px">${escapeHtml(req.shiftLabel || "Ca live")}</h2>
+                <p>Người gửi: <b>${escapeHtml(req.requestedByName || "-")}</b> · ${escapeHtml(req.requestedRole || "")} · ${escapeHtml(req.requestedAt || "-")}</p>
+              </div>
+              ${approvalRequestBadge(req.status)}
+            </div>
+            ${renderRequestChangesTable(req)}
+            <div class="actions">
+              <button class="green" onclick="approveReportEditRequest('${req.id}')">Duyệt & cập nhật báo cáo</button>
+              <button class="red" onclick="rejectReportEditRequest('${req.id}')">Từ chối</button>
+            </div>
+          </div>
+        `).join("") : `<div class="empty">Không có yêu cầu sửa báo cáo nào đang chờ duyệt.</div>`}
+        <div class="section-head"><div><h2>Yêu cầu đã xử lý gần đây</h2><p>Hiển thị 50 yêu cầu đã duyệt hoặc từ chối mới nhất.</p></div></div>
+        ${reviewed.length ? reviewed.map(req=>`
+          <div class="card" style="margin-bottom:12px">
+            <div class="section-head" style="margin:0 0 8px">
+              <div>
+                <h2 style="font-size:17px">${escapeHtml(req.shiftLabel || "Ca live")}</h2>
+                <p>Người gửi: <b>${escapeHtml(req.requestedByName || "-")}</b> · Xử lý bởi: <b>${escapeHtml(req.reviewedByName || "-")}</b> · ${escapeHtml(req.reviewedAt || "-")}</p>
+                ${req.rejectReason ? `<p>Lý do từ chối: ${escapeHtml(req.rejectReason)}</p>` : ""}
+              </div>
+              ${approvalRequestBadge(req.status)}
+            </div>
+          </div>
+        `).join("") : `<div class="empty">Chưa có yêu cầu đã xử lý.</div>`}
+      `;
+    }
+
+    function approveReportEditRequest(requestId){
+      if(!isAdmin()) return toast("Chỉ admin được duyệt yêu cầu");
+      const req = (db.reportEditRequests || []).find(r=>r.id === requestId);
+      if(!req || req.status !== "pending") return toast("Yêu cầu không còn ở trạng thái chờ duyệt");
+      const s = db.shifts.find(x=>x.id === req.shiftId);
+      if(!s) return toast("Không tìm thấy ca live của yêu cầu này");
+      const before = cloneData(s.report || req.before || {});
+      const after = cloneData(req.after || {});
+      after.approvedAt = nowText();
+      after.approvedBy = currentUser.name;
+      after.approvedById = currentUser.id;
+      after.editRequestId = req.id;
+      s.report = after;
+      req.status = "approved";
+      req.reviewedById = currentUser.id;
+      req.reviewedByName = currentUser.name;
+      req.reviewedAt = nowText();
+      req.reviewedTs = nowTs();
+      recordDatabaseEvent({
+        module:"approval_admin",
+        action:"Admin duyệt yêu cầu sửa báo cáo",
+        shift:s,
+        before,
+        after,
+        details:{requestId:req.id, requester:req.requestedByName, changes:(req.changes || []).length}
+      });
+      recordEditHistory({
+        shift:s,
+        type:"report",
+        action:"Admin duyệt sửa báo cáo",
+        before,
+        after,
+        fields:REPORT_HISTORY_FIELDS
+      });
+      saveDB({immediate:true});
+      renderContent();
+      toast("Đã duyệt và cập nhật báo cáo");
+    }
+
+    function rejectReportEditRequest(requestId){
+      if(!isAdmin()) return toast("Chỉ admin được từ chối yêu cầu");
+      const req = (db.reportEditRequests || []).find(r=>r.id === requestId);
+      if(!req || req.status !== "pending") return toast("Yêu cầu không còn ở trạng thái chờ duyệt");
+      const reason = prompt("Nhập lý do từ chối yêu cầu sửa báo cáo:", "");
+      if(reason === null) return;
+      const s = db.shifts.find(x=>x.id === req.shiftId);
+      req.status = "rejected";
+      req.reviewedById = currentUser.id;
+      req.reviewedByName = currentUser.name;
+      req.reviewedAt = nowText();
+      req.reviewedTs = nowTs();
+      req.rejectReason = String(reason || "").trim();
+      recordDatabaseEvent({
+        module:"approval_admin",
+        action:"Admin từ chối yêu cầu sửa báo cáo",
+        shift:s || null,
+        before:req.before || {},
+        after:req.after || {},
+        details:{requestId:req.id, requester:req.requestedByName, reason:req.rejectReason}
+      });
+      saveDB({immediate:true});
+      renderContent();
+      toast("Đã từ chối yêu cầu sửa báo cáo");
+    }
+
     function visibleHistory(){
       if(!db.histories || !Array.isArray(db.histories)) db.histories = [];
       const shifts = visibleShifts();
@@ -1904,6 +2131,7 @@
               const st = computeShiftStatus(s);
               const r = s.report || {};
               const aov = r.aov || (r.orders ? Math.round(r.gmv / r.orders) : 0);
+              const pendingReq = currentUser ? getPendingReportEditRequest(s.id, isAdmin() ? "" : currentUser.id) : null;
               return `
                 <tr>
                   <td>${s.date}<br/><span class="meta">${s.start}-${s.end}</span></td>
@@ -1922,9 +2150,9 @@
                   <td>${Number(r.atc || 0).toLocaleString("vi-VN")}</td>
                   <td>${Number(r.comments || 0).toLocaleString("vi-VN")}</td>
                   <td>${r.avgWatch || "-"}</td>
-                  <td><span class="badge ${st.color}">${st.label}</span></td>
+                  <td><span class="badge ${st.color}">${st.label}</span>${pendingReq ? `<br/><span class="badge yellow" style="margin-top:6px">Chờ duyệt sửa báo cáo</span>` : ""}</td>
                   <td>
-                    ${canReport(s) ? `<button class="small blue" onclick="openReportModal('${s.id}')">Nhập/Sửa</button>` : ""}
+                    ${reportActionButton(s)}
                     <button class="small secondary" onclick="openHistoryForShift('${s.id}')">Lịch sử</button>
                   </td>
                 </tr>
@@ -2204,6 +2432,7 @@
       });
       db.shifts = db.shifts.filter(s=>s.id!==shiftId);
       db.notes = db.notes.filter(n=>n.shiftId!==shiftId);
+      db.reportEditRequests = (db.reportEditRequests || []).filter(r=>r.shiftId!==shiftId);
       saveDB({immediate:true});
       renderContent();
       toast("Đã xóa ca live");
@@ -2381,7 +2610,19 @@
       if(!canReport(s)) return toast("Chỉ nhập báo cáo sau khi ca đã kết thúc live");
       document.getElementById("reportShiftId").value = shiftId;
       document.getElementById("reportMeta").textContent = `${s.date} · ${s.start}-${s.end} · Host ${s.hostName} · Trợ ${supportNameLabel(s)}`;
-      const r = s.report || {};
+      const pendingReq = !isAdmin() ? getPendingReportEditRequest(shiftId, currentUser.id) : null;
+      const notice = document.getElementById("reportApprovalNotice");
+      const submitBtn = document.getElementById("reportSubmitBtn");
+      if(notice){
+        notice.classList.toggle("hidden", !(s.report && !isAdmin()));
+        notice.innerHTML = s.report && !isAdmin()
+          ? (pendingReq ? "Bạn đã có yêu cầu sửa báo cáo đang chờ admin duyệt. Nếu bấm lưu, hệ thống sẽ cập nhật lại nội dung yêu cầu chờ duyệt, báo cáo chính chưa thay đổi." : "Báo cáo này đã được gửi. Nhân viên sửa lại sẽ tạo <b>yêu cầu chờ admin duyệt</b>; báo cáo chính chỉ đổi sau khi admin duyệt.")
+          : "";
+      }
+      if(submitBtn){
+        submitBtn.textContent = s.report && !isAdmin() ? "Gửi yêu cầu sửa báo cáo" : "Lưu báo cáo sau live";
+      }
+      const r = pendingReq?.after || s.report || {};
       document.getElementById("reportGMV").value = r.gmv || 0;
       document.getElementById("reportOrders").value = r.orders || 0;
       document.getElementById("reportCoins").value = r.coins || 0;
@@ -2419,24 +2660,47 @@
         comments:Number(document.getElementById("reportComments").value || 0),
         avgWatch:document.getElementById("reportAvgWatch").value.trim(),
         note:document.getElementById("reportNote").value.trim(),
-        submittedAt:nowText(),
-        submittedBy:currentUser.name,
-        submittedById:currentUser.id
+        submittedAt: oldReport?.submittedAt || nowText(),
+        submittedBy: oldReport?.submittedBy || currentUser.name,
+        submittedById: oldReport?.submittedById || currentUser.id,
+        lastEditedRequestAt: oldReport ? nowText() : ""
       };
+
+      // Nhân viên sửa báo cáo đã gửi: không cập nhật trực tiếp, chỉ tạo yêu cầu chờ admin duyệt.
+      if(oldReport && !isAdmin()){
+        const changes = buildHistoryChanges(oldReport, newReport, REPORT_HISTORY_FIELDS);
+        if(!changes.length) return toast("Bạn chưa thay đổi nội dung báo cáo");
+        const req = createOrUpdateReportEditRequest(s, oldReport, newReport, changes);
+        recordDatabaseEvent({
+          module:"approval_request",
+          action:req.updatedExisting ? "Nhân viên cập nhật yêu cầu sửa báo cáo" : "Nhân viên gửi yêu cầu sửa báo cáo",
+          shift:s,
+          before:oldReport || {},
+          after:newReport,
+          details:{requestId:req.id, requester:req.requestedByName, gmv:newReport.gmv, orders:newReport.orders, changes:changes.length},
+          employeeInput:true
+        });
+        saveDB({immediate:true});
+        closeModal("reportModal");
+        renderContent();
+        toast("Đã gửi yêu cầu sửa báo cáo, chờ admin duyệt");
+        return;
+      }
+
       s.report = newReport;
       recordDatabaseEvent({
-        module:"employee_input",
-        action:oldReport ? "Nhân viên sửa báo cáo sau live" : "Nhân viên tạo báo cáo sau live",
+        module:isAdmin() && oldReport ? "approval_admin" : "employee_input",
+        action:oldReport ? (isAdmin() ? "Admin sửa trực tiếp báo cáo sau live" : "Nhân viên sửa báo cáo sau live") : "Nhân viên tạo báo cáo sau live",
         shift:s,
         before:oldReport || {},
         after:newReport,
         details:{gmv:newReport.gmv, orders:newReport.orders, coins:newReport.coins, view:newReport.view, aov:newReport.aov},
-        employeeInput:true
+        employeeInput:!isAdmin()
       });
       recordEditHistory({
         shift:s,
         type:"report",
-        action:oldReport ? "Sửa báo cáo sau live" : "Tạo báo cáo sau live",
+        action:oldReport ? (isAdmin() ? "Admin sửa trực tiếp báo cáo sau live" : "Sửa báo cáo sau live") : "Tạo báo cáo sau live",
         before:oldReport || {},
         after:newReport,
         fields:REPORT_HISTORY_FIELDS
@@ -2581,6 +2845,7 @@
         renderMyShift();
         renderRegisterTable();
         renderReports();
+        renderReportApprovals();
       }
     },1000);
 
