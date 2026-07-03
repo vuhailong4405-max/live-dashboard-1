@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Live Realtime Dashboard V17 - Shopee Realtime Sync</title>
+  <title>Live Realtime Dashboard V18 - Shopee Live Session Sync</title>
   <style>
     :root{
       --bg:#f5f6fb;
@@ -361,7 +361,7 @@
         <div class="section-head">
           <div>
             <h2>Báo cáo sau live</h2>
-            <p>Bảng báo cáo tự động nhận GMV/Đơn hàng từ Shopee theo từng kênh bán và khung giờ ca live.</p>
+            <p>Bảng báo cáo tự động nhận dữ liệu phiên live Shopee theo Live ID; nếu chưa có Live ID sẽ chỉ đối chiếu dữ liệu theo khung giờ.</p>
           </div>
           <div class="toolbar">
             <button class="secondary" onclick="openShopeeSettings()">Cấu hình Worker Shopee</button>
@@ -376,7 +376,7 @@
         <div class="section-head">
           <div>
             <h2>Kết nối Shopee</h2>
-            <p>Admin kết nối từng kênh bán với shop Shopee bằng nút ủy quyền. Sau khi kết nối, hệ thống tự đồng bộ GMV/Đơn hàng mà không cần sửa JSON hay deploy lại Worker.</p>
+            <p>Admin kết nối từng kênh bán với shop Shopee bằng nút ủy quyền. Ca live nên nhập Live ID/link Creator Center để hệ thống lấy đúng dữ liệu riêng phiên live.</p>
           </div>
           <div class="toolbar">
             <button class="secondary" onclick="openShopeeSettings()">Cấu hình Worker</button>
@@ -533,6 +533,11 @@
           <label>Trợ live <span class="meta">(có thể để trống)</span></label>
           <select id="shiftSupport"></select>
         </div>
+        <div class="form-field">
+          <label>Link phiên live Shopee / Live ID</label>
+          <input id="shiftShopeeLiveUrl" placeholder="Ví dụ: https://banhang.shopee.vn/creator-center/dashboard/live/37650484"/>
+          <div class="meta" style="margin-top:6px">Có thể nhập link Creator Center hoặc chỉ nhập ID phiên live. Hệ thống tự tách Live ID để lấy dữ liệu đúng phiên.</div>
+        </div>
       </div>
       <div class="form-field">
         <label>Mục tiêu / ghi chú ca</label>
@@ -569,6 +574,11 @@
             Sau khi xác nhận check-in, ca live sẽ chuyển sang <b>đang hoạt động</b> và bắt đầu tính thời gian realtime cho đúng người check-in.
           </div>
         </div>
+      </div>
+      <div class="form-field">
+        <label>Link phiên live Shopee / Live ID</label>
+        <input id="checkinShopeeLiveUrl" placeholder="Dán link live Shopee khi bắt đầu ca, ví dụ: https://banhang.shopee.vn/creator-center/dashboard/live/37650484"/>
+        <div class="meta" style="margin-top:6px">Nên nhập tại lúc check-in để Worker lấy dữ liệu đúng phiên live, không lấy nhầm đơn ngoài live.</div>
       </div>
       <div class="form-field">
         <label>Ghi chú check-in nếu có</label>
@@ -614,7 +624,7 @@
       <input type="hidden" id="reportShiftId"/>
       <div id="reportApprovalNotice" class="warning-note hidden"></div>
       <div class="warning-note" id="shopeeSyncNotice">
-        GMV/Đơn hàng sẽ được tự động đồng bộ từ Shopee theo đúng kênh bán và khung giờ ca live. Nếu kênh chưa kết nối, admin vào tab Kết nối Shopee để ủy quyền shop một lần.
+        Nếu ca có Live ID, hệ thống sẽ ưu tiên lấy dữ liệu đúng phiên live Shopee gồm GMV, đơn, xu, view, CTR, CO, add to cart, bình luận và thời gian xem trung bình nếu API Live được cấp quyền. Nếu chưa có Live ID/API Live, hệ thống chỉ có thể sync dữ liệu đơn theo khung giờ.
         <div class="actions" style="margin-top:10px">
           <button type="button" class="green" onclick="syncShopeeMetricsForCurrentReport()">Đồng bộ ngay từ Shopee</button>
           <button type="button" class="gray" onclick="openShopeeSettings()">Cấu hình tự động</button>
@@ -816,6 +826,9 @@
         if(!s.host) s.host = {checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""};
         if(!s.support) s.support = {checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""};
         if(!s.supportId){ s.supportId = ""; s.supportName = s.supportName || "Không có"; }
+        if(!s.shopeeLiveUrl) s.shopeeLiveUrl = "";
+        if(!s.shopeeLiveId) s.shopeeLiveId = parseShopeeLiveId(s.shopeeLiveUrl);
+        if(!s.shopeeLiveMetrics || typeof s.shopeeLiveMetrics !== "object") s.shopeeLiveMetrics = {};
       });
     }
 
@@ -989,6 +1002,29 @@
       return "";
     }
     function roleNameInShift(role){ return role === "host" ? "Host live" : "Trợ live"; }
+
+    function parseShopeeLiveId(value){
+      const text = String(value || "").trim();
+      if(!text) return "";
+      const liveMatch = text.match(/\/live\/(\d+)/i) || text.match(/[?&](?:live_id|liveId|session_id)=([0-9]+)/i);
+      if(liveMatch) return liveMatch[1];
+      const digits = text.match(/\b\d{5,}\b/);
+      return digits ? digits[0] : "";
+    }
+
+    function cleanShopeeLiveUrl(value){
+      return String(value || "").trim();
+    }
+
+    function roleEffectiveMs(shift, role){
+      if(!shift) return 0;
+      const hasSupport = !!shift.supportId;
+      const hostMs = actualMs(shift.host);
+      const supportMs = hasSupport ? actualMs(shift.support) : 0;
+      if(role === "host") return hostMs || (hasSupport ? supportMs : 0);
+      if(role === "support") return hasSupport ? (supportMs || hostMs) : 0;
+      return 0;
+    }
 
 
     function normalizeShopList(value){
@@ -1435,11 +1471,11 @@
             <div class="sync-mini"><div class="label">GMV Shopee đã nhận</div><div class="value">${money(shopeeGMV)}</div><div class="meta">Theo kênh đang lọc</div></div>
             <div class="sync-mini"><div class="label">Đơn Shopee đã nhận</div><div class="value">${shopeeOrders.toLocaleString("vi-VN")}</div><div class="meta">Theo kênh đang lọc</div></div>
             <div class="sync-mini"><div class="label">Lỗi sync</div><div class="value">${errorCount}</div><div class="meta">Xem tab Kết nối Shopee để biết chi tiết</div></div>
-            <div class="sync-mini"><div class="label">Nguồn dữ liệu</div><div class="value" style="font-size:18px">Shopee API</div><div class="meta">GMV/Đơn theo khung giờ ca live</div></div>
+            <div class="sync-mini"><div class="label">Nguồn dữ liệu</div><div class="value" style="font-size:18px">Live Session</div><div class="meta">Ưu tiên Live ID; fallback tùy cấu hình Worker</div></div>
           </div>
           <div class="table-scroll" style="margin-top:12px">
             <table>
-              <thead><tr><th>Ca/kênh đang theo dõi</th><th>GMV/Đơn từ Shopee</th><th>Trạng thái realtime</th><th>Shop</th></tr></thead>
+              <thead><tr><th>Ca/kênh đang theo dõi</th><th>Dữ liệu live Shopee</th><th>Trạng thái realtime</th><th>Shop</th></tr></thead>
               <tbody>${liveRows || `<tr><td colspan="4">Chưa có ca nào trong vùng đồng bộ. Khi có ca live/check-in, dữ liệu Shopee sẽ hiện ở đây.</td></tr>`}</tbody>
             </table>
           </div>
@@ -1483,9 +1519,9 @@
     function renderShiftCard(shift){
       const st = computeShiftStatus(shift);
       const myRole = userRoleInShift(shift);
-      const showHostEnd = shift.host.checkinTs ? formatDuration(actualMs(shift.host)) : "Chưa bắt đầu";
       const hasSupport = !!shift.supportId;
-      const showSupportEnd = hasSupport ? (shift.support.checkinTs ? formatDuration(actualMs(shift.support)) : "Chưa bắt đầu") : "Không có";
+      const showHostEnd = (shift.host.checkinTs || (hasSupport && shift.support.checkinTs)) ? formatDuration(roleEffectiveMs(shift,"host")) : "Chưa bắt đầu";
+      const showSupportEnd = hasSupport ? ((shift.support.checkinTs || shift.host.checkinTs) ? formatDuration(roleEffectiveMs(shift,"support")) : "Chưa bắt đầu") : "Không có";
       const report = effectiveReport(shift);
       const aov = report.aov || (report.orders ? Math.round(report.gmv / report.orders) : 0);
 
@@ -1518,6 +1554,7 @@
                 <div class="name">${shift.hostName}</div>
                 <div class="meta">Host live · ${shift.shop} · ${shift.date} · ${shift.start}-${shift.end}</div>
                 <div class="meta">Trợ live: <b>${supportNameLabel(shift)}</b></div>
+                ${shift.shopeeLiveId ? `<div class="meta">Phiên live Shopee: <b>${escapeHtml(shift.shopeeLiveId)}</b></div>` : ""}
               </div>
             </div>
             <span class="badge ${st.color}">${st.label}</span>
@@ -1600,11 +1637,11 @@
               <tr>
                 <td>${s.date}</td>
                 <td>${s.start}-${s.end}</td>
-                <td><span class="badge purple">${s.shop || "Khác"}</span></td>
+                <td><span class="badge purple">${s.shop || "Khác"}</span>${s.shopeeLiveId ? `<br/><span class="meta">Live ID: ${escapeHtml(s.shopeeLiveId)}</span>` : ""}</td>
                 <td><strong>${s.hostName}</strong></td>
                 <td>${supportNameLabel(s)}</td>
-                <td>${formatDuration(actualMs(s.host))}</td>
-                <td>${s.supportId ? formatDuration(actualMs(s.support)) : "Không có"}</td>
+                <td>${formatDuration(roleEffectiveMs(s,"host"))}</td>
+                <td>${s.supportId ? formatDuration(roleEffectiveMs(s,"support")) : "Không có"}</td>
                 <td><span class="badge ${st.color}">${st.label}</span></td>
                 <td>${s.goal || "-"}</td>
                 <td>
@@ -1659,25 +1696,29 @@
 
     function effectiveReport(shift){
       const base = cloneData(shift?.report || {});
+      const lm = shift?.shopeeLiveMetrics || {};
       const sm = shift?.shopeeMetrics || {};
-      const hasShopee = sm && (sm.gmv !== undefined || sm.orders !== undefined);
+      const metrics = (lm && (lm.syncedAt || lm.live_id || lm.gmv !== undefined || lm.view !== undefined)) ? lm : sm;
+      const hasShopee = metrics && (metrics.gmv !== undefined || metrics.orders !== undefined || metrics.view !== undefined);
       if(hasShopee){
-        base.gmv = Number(sm.gmv || 0);
-        base.orders = Number(sm.orders || 0);
-        base.aov = base.orders ? Math.round(base.gmv / base.orders) : 0;
-        base.shopeeSyncedAt = sm.syncedAt || "";
-        base.shopeeSource = sm.source || "Shopee";
+        const numericFields = [["gmv","gmv"],["orders","orders"],["coins","coins"],["view","view"],["aov","aov"],["atc","atc"],["comments","comments"]];
+        numericFields.forEach(([from,to])=>{ if(metrics[from] !== undefined && metrics[from] !== null && metrics[from] !== "") base[to] = Number(metrics[from] || 0); });
+        const textFields = [["ctr","ctr"],["co","co"],["avgWatch","avgWatch"],["avg_watch","avgWatch"]];
+        textFields.forEach(([from,to])=>{ if(metrics[from] !== undefined && metrics[from] !== null && metrics[from] !== "") base[to] = String(metrics[from]); });
+        if(!base.aov && base.orders) base.aov = Math.round(Number(base.gmv || 0) / Number(base.orders || 1));
+        base.shopeeSyncedAt = metrics.syncedAt || "";
+        base.shopeeSource = metrics.source || (metrics.live_id ? "Shopee Live Session" : "Shopee");
       }
       return base;
     }
 
     function shiftHostMs(shift){
-      return Number(shift.report?.hostActualMs || actualMs(shift.host));
+      return Number(shift.report?.hostActualMs || roleEffectiveMs(shift,"host"));
     }
 
     function shiftSupportMs(shift){
       if(!shift.supportId) return 0;
-      return Number(shift.report?.supportActualMs || actualMs(shift.support));
+      return Number(shift.report?.supportActualMs || roleEffectiveMs(shift,"support"));
     }
 
     function employeeGmvInShifts(accountId, shifts){
@@ -2494,6 +2535,7 @@
       const supportSelected = currentUser.role === "support" ? currentUser.id : "";
       document.getElementById("shiftHost").innerHTML = accountOptions("host", hostSelected);
       document.getElementById("shiftSupport").innerHTML = accountOptions("support", supportSelected, {allowEmpty:true});
+      document.getElementById("shiftShopeeLiveUrl").value = "";
       document.getElementById("shiftGoal").value = "";
       openModal("shiftModal");
     }
@@ -2510,6 +2552,7 @@
       document.getElementById("shiftAddChannelBtn").classList.toggle("hidden", !isAdmin());
       document.getElementById("shiftHost").innerHTML = accountOptions("host", s.hostId);
       document.getElementById("shiftSupport").innerHTML = accountOptions("support", s.supportId || "", {allowEmpty:true});
+      document.getElementById("shiftShopeeLiveUrl").value = s.shopeeLiveUrl || s.shopeeLiveId || "";
       document.getElementById("shiftGoal").value = s.goal || "";
       openModal("shiftModal");
     }
@@ -2539,6 +2582,8 @@
         hostName:host.name,
         supportId:support ? support.id : "",
         supportName:support ? support.name : "Không có",
+        shopeeLiveUrl:cleanShopeeLiveUrl(document.getElementById("shiftShopeeLiveUrl").value),
+        shopeeLiveId:parseShopeeLiveId(document.getElementById("shiftShopeeLiveUrl").value),
         goal:document.getElementById("shiftGoal").value.trim()
       };
       if(!base.date || !base.start || !base.end) return toast("Nhập đủ ngày và giờ live");
@@ -2552,6 +2597,8 @@
           shop:s.shop,
           hostName:s.hostName,
           supportName:s.supportName,
+          shopeeLiveUrl:s.shopeeLiveUrl || "",
+          shopeeLiveId:s.shopeeLiveId || "",
           goal:s.goal || ""
         };
         Object.assign(s, base);
@@ -2624,6 +2671,7 @@
       document.getElementById("checkinShiftId").value = shiftId;
       document.getElementById("checkinRole").value = role;
       document.getElementById("checkinMeta").textContent = `${roleNameInShift(role)} · ${role==="host"?s.hostName:supportNameLabel(s)} · ${s.date} · ${s.start}-${s.end}`;
+      document.getElementById("checkinShopeeLiveUrl").value = s.shopeeLiveUrl || s.shopeeLiveId || "";
       document.getElementById("checkinNote").value = "";
       capturedPhoto = "";
 
@@ -2682,6 +2730,14 @@
       item.checkinTs = nowTs();
       item.checkinTime = nowText();
       item.photo = await uploadCheckinPhotoToCloud(shiftId, role, capturedPhoto);
+      const liveInput = cleanShopeeLiveUrl(document.getElementById("checkinShopeeLiveUrl").value);
+      const liveId = parseShopeeLiveId(liveInput);
+      if(liveInput && !liveId) return toast("Link live Shopee chưa hợp lệ, chưa tách được Live ID");
+      if(liveInput){
+        s.shopeeLiveUrl = liveInput;
+        s.shopeeLiveId = liveId;
+        if(!s.shopeeLiveMetrics || typeof s.shopeeLiveMetrics !== "object") s.shopeeLiveMetrics = {};
+      }
       item.checkinNote = document.getElementById("checkinNote").value.trim();
 
       if(item.checkinNote){
@@ -2694,8 +2750,8 @@
         module:"employee_input",
         action:`Nhân viên check-in ${roleNameInShift(role)}`,
         shift:s,
-        after:{role, checkinTime:item.checkinTime, checkinNote:item.checkinNote, photoSaved:item.photo ? "Có" : "Không"},
-        details:{role, checkinTime:item.checkinTime, hasNote:!!item.checkinNote, hasPhoto:!!item.photo},
+        after:{role, checkinTime:item.checkinTime, checkinNote:item.checkinNote, photoSaved:item.photo ? "Có" : "Không", shopeeLiveId:s.shopeeLiveId || ""},
+        details:{role, checkinTime:item.checkinTime, hasNote:!!item.checkinNote, hasPhoto:!!item.photo, shopeeLiveId:s.shopeeLiveId || ""},
         employeeInput:true
       });
       saveDB({immediate:true});
@@ -2816,7 +2872,7 @@
 
     // ================= SHOPEE AUTO DATA SYNC =================
     // Partner Key và Access Token của Shopee không được lưu trong file HTML.
-    // Dashboard chỉ gọi Cloudflare Worker trung gian; Worker gọi Shopee và trả dữ liệu theo từng kênh/khung giờ.
+    // Dashboard chỉ gọi Cloudflare Worker trung gian; Worker ưu tiên lấy dữ liệu theo Live ID phiên live, sau đó ghi về Firebase.
     function getShopeeSyncEndpoint(){
       const fromCloud = String(db?.settings?.shopeeSyncEndpoint || "").trim().replace(/\/$/, "");
       const fromLocal = String(localStorage.getItem(SHOPEE_SYNC_ENDPOINT_KEY) || "").trim().replace(/\/$/, "");
@@ -2828,7 +2884,7 @@
       if(!db.settings) db.settings = {};
       const current = getShopeeSyncEndpoint();
       const value = prompt(
-        "Nhập URL Cloudflare Worker Shopee OAuth.\nVí dụ: https://shopee-sync.tenmiencuaban.workers.dev\n\nV16 không cần nhập SHOPEE_SHOPS_JSON thủ công. Sau khi lưu endpoint, vào tab Kết nối Shopee để bấm kết nối từng kênh bán với shop Shopee và theo dõi log đồng bộ.",
+        "Nhập URL Cloudflare Worker Shopee OAuth.\nVí dụ: https://shopee-sync.tenmiencuaban.workers.dev\n\nV18 không cần nhập SHOPEE_SHOPS_JSON thủ công. Sau khi lưu endpoint, vào tab Kết nối Shopee để bấm kết nối từng kênh bán, nhập Live ID khi check-in và theo dõi log đồng bộ.",
         current
       );
       if(value === null) return;
@@ -2892,7 +2948,7 @@
             <div>
               <h2 style="font-size:18px">Tự động đồng bộ Shopee</h2>
               <p>${enabled ? "Đang bật" : "Chưa bật"} · ${candidates.length} ca trong vùng cần đồng bộ · Lần gần nhất: <b>${lastShopeeAutoSyncText}</b></p>
-              <p>GMV/Đơn hàng được lấy theo <b>kênh bán</b> và <b>khung giờ ca live</b>. V16 dùng luồng OAuth + bảng giám sát: thêm shop mới chỉ cần bấm kết nối, sau đó theo dõi ca nào đang sync, GMV/đơn, lỗi gần nhất và log Worker.</p>
+              <p>V18 ưu tiên lấy dữ liệu theo <b>Live ID phiên live Shopee</b>. Nếu chưa có Live ID hoặc app chưa có API Live, dashboard sẽ hiển thị lỗi rõ để không lấy nhầm đơn ngoài phiên live.</p>
             </div>
             <div class="toolbar">
               ${isAdmin()?`<button class="secondary" onclick="openShopeeSettings()">Cấu hình Worker</button>`:""}
@@ -3017,6 +3073,7 @@
       if(sm.lastError) return {label:"Lỗi sync", color:"red", note:sm.lastError};
       if(!shouldAutoSyncShopeeShift(s)) return {label:"Ngoài vùng sync", color:"gray", note:"Ca chưa tới giờ, đã quá cũ hoặc khung giờ chưa hợp lệ."};
       if(sm.syncedAt) return {label:"Đã sync", color:"green", note:`Cập nhật cuối: ${sm.syncedAt}`};
+      if(s.shopeeLiveId) return {label:"Chờ dữ liệu live", color:"yellow", note:`Đã có Live ID ${s.shopeeLiveId}. Worker sẽ ưu tiên lấy dữ liệu riêng phiên live.`};
       return {label:"Chờ sync", color:"yellow", note:"Worker sẽ tự đồng bộ theo Cron hoặc admin bấm Sync ca."};
     }
 
@@ -3052,11 +3109,11 @@
         return `
           <tr>
             <td>${s.date}<br/><span class="meta">${s.start}-${s.end}</span></td>
-            <td><span class="badge purple">${escapeHtml(s.shop || "Khác")}</span><br/><span class="meta">Shop ID: ${escapeHtml(shopId)}</span></td>
+            <td><span class="badge purple">${escapeHtml(s.shop || "Khác")}</span><br/><span class="meta">Shop ID: ${escapeHtml(shopId)}</span>${s.shopeeLiveId ? `<br/><span class="meta">Live ID: ${escapeHtml(s.shopeeLiveId)}</span>` : ""}</td>
             <td><strong>${escapeHtml(s.hostName || "-")}</strong><br/><span class="meta">Trợ: ${escapeHtml(supportNameLabel(s))}</span></td>
             <td><span class="badge ${st.color}">${st.label}</span></td>
             <td>${shopeeWindowTextForShift(s)}</td>
-            <td>${money(gmv || 0)}<br/><span class="meta">${Number(orders || 0).toLocaleString("vi-VN")} đơn</span></td>
+            <td>${money(gmv || 0)}<br/><span class="meta">${Number(orders || 0).toLocaleString("vi-VN")} đơn · View: ${Number((sm.view !== undefined ? sm.view : r.view) || 0).toLocaleString("vi-VN")}</span></td>
             <td><span class="badge ${syncState.color}">${syncState.label}</span><br/><span class="meta">${escapeHtml(syncState.note || "-")}</span></td>
             <td>
               <button class="small green" onclick="syncShopeeShiftById('${s.id}')">Sync ca</button>
@@ -3078,7 +3135,7 @@
           <div class="section-head" style="margin-top:0">
             <div>
               <h2>Dữ liệu Shopee theo ca live</h2>
-              <p>Luồng tối ưu: ca check-in → Worker lấy đơn/GMV theo shop đã kết nối và khung giờ thực tế → ghi về Firebase → mọi máy tự cập nhật.</p>
+              <p>Luồng tối ưu: ca check-in nhập Live ID → Worker lấy dữ liệu đúng phiên live Shopee → ghi về Firebase → mọi máy tự cập nhật.</p>
               <p>Worker gần nhất: <b>${escapeHtml(db.settings?.shopeeLastWorkerSyncAt || "Chưa có")}</b> · ${escapeHtml(db.settings?.shopeeLastWorkerSyncSummary || "Chưa có kết quả")}</p>
             </div>
             <div class="toolbar">
@@ -3209,12 +3266,24 @@
 
     function applyShopeeMetricsToShift(s, data, window){
       if(!s || !data) return false;
-      const old = cloneData(s.shopeeMetrics || {});
+      const targetKey = s.shopeeLiveId ? "shopeeLiveMetrics" : "shopeeMetrics";
+      const old = cloneData(s[targetKey] || {});
       const next = {
-        source:data.source || "shopee_order_api",
+        source:data.source || (s.shopeeLiveId ? "shopee_live_session" : "shopee_order_api"),
+        dataMode:data.dataMode || (s.shopeeLiveId ? "live_session" : "time_window_order"),
         channel:s.shop || data.channel || "",
+        live_id:String(data.live_id || s.shopeeLiveId || ""),
+        live_url:s.shopeeLiveUrl || "",
         gmv:Number(data.gmv || 0),
         orders:Number(data.orders || 0),
+        coins:Number(data.coins || 0),
+        view:Number(data.view || data.views || 0),
+        ctr:data.ctr !== undefined ? String(data.ctr) : "",
+        co:data.co !== undefined ? String(data.co) : "",
+        aov:Number(data.aov || (data.orders ? Math.round(Number(data.gmv || 0)/Number(data.orders || 1)) : 0)),
+        atc:Number(data.atc || data.add_to_cart || data.addToCart || 0),
+        comments:Number(data.comments || data.comment || 0),
+        avgWatch:String(data.avgWatch || data.avg_watch || data.average_watch_time || ""),
         orderSnCount:Number(data.orderSnCount || 0),
         note:data.note || "",
         lastError:"",
@@ -3227,15 +3296,16 @@
         syncedAtTs:Date.now()
       };
       const changed = JSON.stringify(old) !== JSON.stringify(next);
-      s.shopeeMetrics = next;
+      s[targetKey] = next;
+      if(targetKey === "shopeeLiveMetrics") s.shopeeMetrics = next;
       if(changed){
         recordDatabaseEvent({
           module:"shopee_auto_sync",
-          action:"Tự động cập nhật GMV/Đơn từ Shopee",
+          action:s.shopeeLiveId ? "Tự động cập nhật dữ liệu phiên live Shopee" : "Tự động cập nhật Dữ liệu live Shopee",
           shift:s,
           before:old,
           after:next,
-          details:{channel:s.shop, gmv:next.gmv, orders:next.orders, time_from:next.time_from, time_to:next.time_to}
+          details:{channel:s.shop, live_id:next.live_id, gmv:next.gmv, orders:next.orders, view:next.view, time_from:next.time_from, time_to:next.time_to}
         });
       }
       return changed;
@@ -3246,7 +3316,7 @@
       if(!window.time_from || !window.time_to || window.time_to <= window.time_from){
         throw new Error("Khung giờ ca live không hợp lệ");
       }
-      const url = `${endpoint}/api/shopee/live-report?channel=${encodeURIComponent(s.shop || "")}&shift_id=${encodeURIComponent(s.id || "")}&time_from=${window.time_from}&time_to=${window.time_to}`;
+      const url = `${endpoint}/api/shopee/live-report?channel=${encodeURIComponent(s.shop || "")}&shift_id=${encodeURIComponent(s.id || "")}&live_id=${encodeURIComponent(s.shopeeLiveId || "")}&live_url=${encodeURIComponent(s.shopeeLiveUrl || "")}&time_from=${window.time_from}&time_to=${window.time_to}`;
       const res = await fetch(url, {method:"GET", headers:{"Accept":"application/json"}});
       const data = await res.json().catch(()=>null);
       if(!res.ok || !data || data.error){
@@ -3328,6 +3398,14 @@
         const r = effectiveReport(s);
         fillReportField("reportGMV", r.gmv);
         fillReportField("reportOrders", r.orders);
+        fillReportField("reportCoins", r.coins);
+        fillReportField("reportCTR", r.ctr);
+        fillReportField("reportCO", r.co);
+        fillReportField("reportView", r.view);
+        fillReportField("reportAOV", r.aov);
+        fillReportField("reportATC", r.atc);
+        fillReportField("reportComments", r.comments);
+        fillReportField("reportAvgWatch", r.avgWatch);
         autoAOV();
         await saveDB({immediate:true});
         renderContent();
@@ -3351,8 +3429,8 @@
       if(!s || !canReport(s)) return;
       const oldReport = cloneData(s.report);
       const newReport = {
-        hostActualMs:actualMs(s.host),
-        supportActualMs:actualMs(s.support),
+        hostActualMs:roleEffectiveMs(s,"host"),
+        supportActualMs:roleEffectiveMs(s,"support"),
         gmv:Number(document.getElementById("reportGMV").value || 0),
         orders:Number(document.getElementById("reportOrders").value || 0),
         coins:Number(document.getElementById("reportCoins").value || 0),
