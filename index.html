@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Live Realtime Dashboard V15 - Shopee OAuth Connect</title>
+  <title>Live Realtime Dashboard V17 - Shopee Realtime Sync</title>
   <style>
     :root{
       --bg:#f5f6fb;
@@ -142,6 +142,19 @@
     .progress{height:10px;background:#f3f4f6;border-radius:999px;overflow:hidden}
     .progress-bar{height:100%;background:var(--primary);border-radius:999px;transition:.2s;width:0}
 
+    .sync-pulse{
+      width:10px;height:10px;border-radius:50%;background:var(--green);display:inline-block;margin-right:7px;box-shadow:0 0 0 rgba(22,163,74,.45);animation:pulseSync 1.6s infinite;vertical-align:middle
+    }
+    .sync-pulse.warn{background:var(--yellow)}
+    .sync-pulse.off{background:#9ca3af;animation:none;box-shadow:none}
+    .sync-pulse.error{background:var(--red);animation:none;box-shadow:none}
+    @keyframes pulseSync{0%{box-shadow:0 0 0 0 rgba(22,163,74,.45)}70%{box-shadow:0 0 0 9px rgba(22,163,74,0)}100%{box-shadow:0 0 0 0 rgba(22,163,74,0)}}
+    .sync-panel{border:1px solid rgba(37,99,235,.18);background:linear-gradient(135deg,#fff,#eff6ff);margin-bottom:16px}
+    .sync-mini-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;margin-top:12px}
+    .sync-mini{background:rgba(255,255,255,.72);border:1px solid var(--line);border-radius:14px;padding:12px}
+    .sync-mini .label{font-size:11px;color:var(--muted);font-weight:900;text-transform:uppercase;letter-spacing:.35px}
+    .sync-mini .value{font-size:20px;font-weight:950;margin-top:4px;letter-spacing:-.3px}
+
     .alert-box{border-radius:13px;padding:10px 12px;font-size:13px;font-weight:850;margin:12px 0;line-height:1.4}
     .alert-box.green{background:#f0fdf4;color:#166534}
     .alert-box.yellow{background:#fffbeb;color:#92400e}
@@ -193,12 +206,13 @@
       .two-col{grid-template-columns:1fr}
       .form-grid,.form-grid.two,.form-grid.four{grid-template-columns:repeat(2,1fr)}
       .metrics{grid-template-columns:repeat(2,1fr)}
+      .sync-mini-grid{grid-template-columns:repeat(2,1fr)}
       .camera-box{grid-template-columns:1fr}
     }
     @media(max-width:720px){
       .header-wrap{flex-direction:column;align-items:flex-start}
       .user-box{justify-content:flex-start}
-      .stats-grid,.live-grid,.form-grid,.form-grid.two,.form-grid.four{grid-template-columns:1fr}
+      .stats-grid,.live-grid,.form-grid,.form-grid.two,.form-grid.four,.sync-mini-grid{grid-template-columns:1fr}
       th,td{font-size:12px;padding:10px 8px}
       .title-wrap h1{font-size:21px}
     }
@@ -247,6 +261,7 @@
 
       <section id="view-dashboard" class="view">
         <div id="statsGrid" class="grid stats-grid"></div>
+        <div id="shopeeRealtimeDashboardPanel"></div>
         <div class="section-head">
           <div>
             <h2>Ca live đang hoạt động</h2>
@@ -370,6 +385,8 @@
           </div>
         </div>
         <div id="shopeeConnectWrap"></div>
+        <div id="shopeeShiftSyncWrap"></div>
+        <div id="shopeeSyncLogWrap"></div>
       </section>
 
       <section id="view-approvals" class="view">
@@ -1112,6 +1129,7 @@
       renderReports();
       renderShopeeAutoSyncPanel();
       renderShopeeConnectPanel();
+      renderShopeeDiagnosticsPanel();
       renderReportApprovals();
       renderHistory();
     }
@@ -1325,6 +1343,110 @@
       return isAdmin() || isParticipant(shift) ? (st === "ended" || st === "reported") : false;
     }
 
+    function relativeTimeFromMs(ts){
+      ts = Number(ts || 0);
+      if(!ts) return "Chưa có";
+      const diff = Math.max(0, Date.now() - ts);
+      const sec = Math.floor(diff/1000);
+      if(sec < 60) return `${sec}s trước`;
+      const min = Math.floor(sec/60);
+      if(min < 60) return `${min} phút trước`;
+      const hour = Math.floor(min/60);
+      if(hour < 24) return `${hour} giờ trước`;
+      const day = Math.floor(hour/24);
+      return `${day} ngày trước`;
+    }
+
+    function shopeeLatestSyncTs(shifts=(db.shifts||[])){
+      const tsList = [];
+      const settingsTs = Number(db.settings?.shopeeLastWorkerSyncAtTs || 0);
+      if(settingsTs) tsList.push(settingsTs);
+      shifts.forEach(s=>{
+        const ts = Number(s.shopeeMetrics?.syncedAtTs || 0);
+        if(ts) tsList.push(ts);
+      });
+      return tsList.length ? Math.max(...tsList) : 0;
+    }
+
+    function shopeeSyncFreshness(ts){
+      if(!ts) return {label:"Chưa có sync", color:"gray", pulse:"off", note:"Chưa nhận dữ liệu từ Worker/Shopee"};
+      const age = Date.now() - Number(ts);
+      if(age <= 90*1000) return {label:"Đang realtime", color:"green", pulse:"", note:"Dữ liệu vừa cập nhật từ sàn"};
+      if(age <= 5*60*1000) return {label:"Độ trễ nhẹ", color:"yellow", pulse:"warn", note:"Cron/Worker vẫn trong vùng chấp nhận"};
+      return {label:"Chậm sync", color:"red", pulse:"error", note:"Nên kiểm tra Worker, Cron hoặc kết nối Shopee"};
+    }
+
+    function nextShopeeSyncText(ts){
+      const interval = Number(db?.settings?.shopeeSyncIntervalMs || SHOPEE_AUTO_SYNC_INTERVAL_MS || 60000);
+      if(!ts) return "Đang chờ lần đầu";
+      const next = Number(ts) + interval;
+      const remain = Math.ceil((next - Date.now())/1000);
+      if(remain <= 0) return "Đang tới lượt sync";
+      return `Còn khoảng ${remain}s`;
+    }
+
+    function renderShopeeRealtimeDashboardPanel(shifts=[]){
+      const wrap = document.getElementById("shopeeRealtimeDashboardPanel");
+      if(!wrap || !isAdmin()) return;
+      const endpoint = getShopeeSyncEndpoint();
+      const connections = shopeeConnectionMap();
+      const channels = getChannels();
+      const connectedCount = channels.filter(ch=>shopeeConnectionStatusText(connections[ch]) === "Đã kết nối").length;
+      const candidates = shifts.filter(shouldAutoSyncShopeeShift);
+      const activeCandidates = candidates.filter(s=>computeShiftStatus(s).value === "active");
+      const latestTs = shopeeLatestSyncTs(shifts);
+      const fresh = shopeeSyncFreshness(latestTs);
+      const shopeeGMV = shifts.reduce((sum,s)=>sum+Number(s.shopeeMetrics?.gmv || 0),0);
+      const shopeeOrders = shifts.reduce((sum,s)=>sum+Number(s.shopeeMetrics?.orders || 0),0);
+      const errorCount = shifts.filter(s=>s.shopeeMetrics?.lastError).length;
+      const updatedCount = shifts.filter(s=>s.shopeeMetrics?.syncedAt).length;
+      const liveRows = (activeCandidates.length ? activeCandidates : candidates).slice(0,5).map(s=>{
+        const syncState = shopeeSyncStateForShift(s);
+        const sm = s.shopeeMetrics || {};
+        const conn = shopeeConnectionForChannel(s.shop || "");
+        return `
+          <tr>
+            <td><strong>${escapeHtml(s.shop || "Khác")}</strong><br/><span class="meta">${escapeHtml(s.hostName || "-")} · ${s.date} ${s.start}-${s.end}</span></td>
+            <td>${money(sm.gmv || 0)}<br/><span class="meta">${Number(sm.orders || 0).toLocaleString("vi-VN")} đơn</span></td>
+            <td><span class="badge ${syncState.color}">${syncState.label}</span><br/><span class="meta">${escapeHtml(sm.syncedAt || syncState.note || "-")}</span></td>
+            <td><span class="meta">Shop ID: ${escapeHtml(conn?.shop_id || sm.shop_id || "-")}</span></td>
+          </tr>
+        `;
+      }).join("");
+
+      wrap.innerHTML = `
+        <div class="card sync-panel">
+          <div class="section-head" style="margin:0;align-items:center">
+            <div>
+              <h2 style="font-size:18px"><span class="sync-pulse ${fresh.pulse}"></span>Thời gian thực đồng bộ từ Shopee xuống dashboard</h2>
+              <p><b>${fresh.label}</b> · Lần nhận dữ liệu gần nhất: <b>${latestTs ? relativeTimeFromMs(latestTs) : "Chưa có"}</b> · Lần Worker/Cron gần nhất: <b>${escapeHtml(db.settings?.shopeeLastWorkerSyncAt || "Chưa có")}</b></p>
+              <p>${fresh.note}. Dữ liệu đi theo luồng: <b>Shopee → Worker → Firebase → Dashboard</b>. Khi Firebase nhận dữ liệu mới, tất cả thiết bị đang mở web sẽ tự cập nhật.</p>
+            </div>
+            <div class="toolbar">
+              <button class="green" onclick="runShopeeAutoSyncNow(false)">Sync ngay</button>
+              <button class="secondary" onclick="switchView('shopee')">Xem giám sát Shopee</button>
+            </div>
+          </div>
+          <div class="sync-mini-grid">
+            <div class="sync-mini"><div class="label">Trạng thái Worker</div><div class="value">${endpoint ? "Đã cấu hình" : "Chưa có"}</div><div class="meta">${endpoint ? "Endpoint đã lưu" : "Cần cấu hình Worker"}</div></div>
+            <div class="sync-mini"><div class="label">Shop đã kết nối</div><div class="value">${connectedCount}/${channels.length}</div><div class="meta">Theo kênh bán trên dashboard</div></div>
+            <div class="sync-mini"><div class="label">Ca đang kéo từ sàn</div><div class="value">${candidates.length}</div><div class="meta">${activeCandidates.length} ca đang live · ${updatedCount} ca đã có dữ liệu</div></div>
+            <div class="sync-mini"><div class="label">Lượt sync tiếp theo</div><div class="value" style="font-size:18px">${nextShopeeSyncText(latestTs)}</div><div class="meta">Cron/auto loop ước tính mỗi ${Math.round(Number(db?.settings?.shopeeSyncIntervalMs || SHOPEE_AUTO_SYNC_INTERVAL_MS)/1000)}s</div></div>
+            <div class="sync-mini"><div class="label">GMV Shopee đã nhận</div><div class="value">${money(shopeeGMV)}</div><div class="meta">Theo kênh đang lọc</div></div>
+            <div class="sync-mini"><div class="label">Đơn Shopee đã nhận</div><div class="value">${shopeeOrders.toLocaleString("vi-VN")}</div><div class="meta">Theo kênh đang lọc</div></div>
+            <div class="sync-mini"><div class="label">Lỗi sync</div><div class="value">${errorCount}</div><div class="meta">Xem tab Kết nối Shopee để biết chi tiết</div></div>
+            <div class="sync-mini"><div class="label">Nguồn dữ liệu</div><div class="value" style="font-size:18px">Shopee API</div><div class="meta">GMV/Đơn theo khung giờ ca live</div></div>
+          </div>
+          <div class="table-scroll" style="margin-top:12px">
+            <table>
+              <thead><tr><th>Ca/kênh đang theo dõi</th><th>GMV/Đơn từ Shopee</th><th>Trạng thái realtime</th><th>Shop</th></tr></thead>
+              <tbody>${liveRows || `<tr><td colspan="4">Chưa có ca nào trong vùng đồng bộ. Khi có ca live/check-in, dữ liệu Shopee sẽ hiện ở đây.</td></tr>`}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
     function renderDashboard(){
       if(!isAdmin()) return;
       const dashboardShifts = getChannelFilteredShifts(db.shifts);
@@ -1345,6 +1467,8 @@
       document.getElementById("statsGrid").innerHTML = stats.map(s=>`
         <div class="card"><div class="stat-title">${s[0]}</div><div class="stat-value">${s[1]}</div><div class="stat-note">${s[2]}</div></div>
       `).join("");
+
+      renderShopeeRealtimeDashboardPanel(dashboardShifts);
 
       const shifts = [...dashboardShifts].sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start));
       document.getElementById("liveGrid").innerHTML = shifts.length ? shifts.map(renderShiftCard).join("") : `<div class="empty">Chưa có ca live nào theo kênh bán đang chọn.</div>`;
@@ -2704,7 +2828,7 @@
       if(!db.settings) db.settings = {};
       const current = getShopeeSyncEndpoint();
       const value = prompt(
-        "Nhập URL Cloudflare Worker Shopee OAuth.\nVí dụ: https://shopee-sync.tenmiencuaban.workers.dev\n\nV15 không cần nhập SHOPEE_SHOPS_JSON thủ công nữa. Sau khi lưu endpoint, vào tab Kết nối Shopee để bấm kết nối từng kênh bán với shop Shopee.",
+        "Nhập URL Cloudflare Worker Shopee OAuth.\nVí dụ: https://shopee-sync.tenmiencuaban.workers.dev\n\nV16 không cần nhập SHOPEE_SHOPS_JSON thủ công. Sau khi lưu endpoint, vào tab Kết nối Shopee để bấm kết nối từng kênh bán với shop Shopee và theo dõi log đồng bộ.",
         current
       );
       if(value === null) return;
@@ -2768,7 +2892,7 @@
             <div>
               <h2 style="font-size:18px">Tự động đồng bộ Shopee</h2>
               <p>${enabled ? "Đang bật" : "Chưa bật"} · ${candidates.length} ca trong vùng cần đồng bộ · Lần gần nhất: <b>${lastShopeeAutoSyncText}</b></p>
-              <p>GMV/Đơn hàng được lấy theo <b>kênh bán</b> và <b>khung giờ ca live</b>. V15 dùng luồng OAuth: thêm shop mới chỉ cần bấm kết nối, không cần sửa JSON trong Worker.</p>
+              <p>GMV/Đơn hàng được lấy theo <b>kênh bán</b> và <b>khung giờ ca live</b>. V16 dùng luồng OAuth + bảng giám sát: thêm shop mới chỉ cần bấm kết nối, sau đó theo dõi ca nào đang sync, GMV/đơn, lỗi gần nhất và log Worker.</p>
             </div>
             <div class="toolbar">
               ${isAdmin()?`<button class="secondary" onclick="openShopeeSettings()">Cấu hình Worker</button>`:""}
@@ -2867,6 +2991,155 @@
       `;
     }
 
+
+
+    function unixSecondsToVN(ts){
+      ts = Number(ts || 0);
+      if(!ts) return "-";
+      return new Date(ts * 1000).toLocaleString("vi-VN", {hour:"2-digit", minute:"2-digit", second:"2-digit", day:"2-digit", month:"2-digit", year:"numeric"});
+    }
+
+    function shopeeWindowTextForShift(s){
+      try{
+        const w = shiftShopeeWindowSeconds(s);
+        return `${unixSecondsToVN(w.time_from)} → ${unixSecondsToVN(w.time_to)}`;
+      }catch(e){
+        return "Khung giờ lỗi";
+      }
+    }
+
+    function shopeeSyncStateForShift(s){
+      const conn = shopeeConnectionForChannel(s?.shop || "");
+      const sm = s?.shopeeMetrics || {};
+      if(!s || !s.shop) return {label:"Thiếu kênh", color:"red", note:"Ca live chưa có kênh bán."};
+      if(!conn) return {label:"Chưa kết nối", color:"gray", note:"Kênh này chưa ủy quyền shop Shopee."};
+      if(shopeeConnectionStatusText(conn) !== "Đã kết nối") return {label:shopeeConnectionStatusText(conn), color:"red", note:conn.lastError || "Token chưa hợp lệ hoặc đã hết hạn."};
+      if(sm.lastError) return {label:"Lỗi sync", color:"red", note:sm.lastError};
+      if(!shouldAutoSyncShopeeShift(s)) return {label:"Ngoài vùng sync", color:"gray", note:"Ca chưa tới giờ, đã quá cũ hoặc khung giờ chưa hợp lệ."};
+      if(sm.syncedAt) return {label:"Đã sync", color:"green", note:`Cập nhật cuối: ${sm.syncedAt}`};
+      return {label:"Chờ sync", color:"yellow", note:"Worker sẽ tự đồng bộ theo Cron hoặc admin bấm Sync ca."};
+    }
+
+    function shopeeLogs(){
+      return (db.dataLogs || [])
+        .filter(l=>String(l.module || "").toLowerCase().includes("shopee") || String(l.action || "").toLowerCase().includes("shopee"))
+        .reverse();
+    }
+
+    function renderShopeeDiagnosticsPanel(){
+      const shiftWrap = document.getElementById("shopeeShiftSyncWrap");
+      const logWrap = document.getElementById("shopeeSyncLogWrap");
+      if(!shiftWrap || !logWrap || !currentUser || !isAdmin()) return;
+      const endpoint = getShopeeSyncEndpoint();
+      const connections = shopeeConnectionMap();
+      const channels = getChannels();
+      const connectedCount = channels.filter(ch=>shopeeConnectionStatusText(connections[ch]) === "Đã kết nối").length;
+      const shifts = getChannelFilteredShifts(db.shifts || [])
+        .slice()
+        .sort((a,b)=>(b.date+b.start).localeCompare(a.date+a.start));
+      const candidates = shifts.filter(shouldAutoSyncShopeeShift);
+      const synced = shifts.filter(s=>s.shopeeMetrics && s.shopeeMetrics.syncedAt).length;
+      const errorCount = shifts.filter(s=>s.shopeeMetrics && s.shopeeMetrics.lastError).length;
+      const rows = shifts.slice(0,80).map(s=>{
+        const st = computeShiftStatus(s);
+        const syncState = shopeeSyncStateForShift(s);
+        const sm = s.shopeeMetrics || {};
+        const r = effectiveReport(s);
+        const conn = shopeeConnectionForChannel(s.shop || "");
+        const shopId = conn?.shop_id || sm.shop_id || "-";
+        const gmv = sm.gmv !== undefined ? sm.gmv : r.gmv;
+        const orders = sm.orders !== undefined ? sm.orders : r.orders;
+        return `
+          <tr>
+            <td>${s.date}<br/><span class="meta">${s.start}-${s.end}</span></td>
+            <td><span class="badge purple">${escapeHtml(s.shop || "Khác")}</span><br/><span class="meta">Shop ID: ${escapeHtml(shopId)}</span></td>
+            <td><strong>${escapeHtml(s.hostName || "-")}</strong><br/><span class="meta">Trợ: ${escapeHtml(supportNameLabel(s))}</span></td>
+            <td><span class="badge ${st.color}">${st.label}</span></td>
+            <td>${shopeeWindowTextForShift(s)}</td>
+            <td>${money(gmv || 0)}<br/><span class="meta">${Number(orders || 0).toLocaleString("vi-VN")} đơn</span></td>
+            <td><span class="badge ${syncState.color}">${syncState.label}</span><br/><span class="meta">${escapeHtml(syncState.note || "-")}</span></td>
+            <td>
+              <button class="small green" onclick="syncShopeeShiftById('${s.id}')">Sync ca</button>
+              <button class="small secondary" onclick="openReportModal('${s.id}')">Xem báo cáo</button>
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+      shiftWrap.innerHTML = `
+        <div class="grid stats-grid" style="margin:16px 0">
+          <div class="card"><div class="stat-title">Endpoint Worker</div><div class="stat-value" style="font-size:18px">${endpoint ? "Đã cấu hình" : "Chưa có"}</div><div class="stat-note">${endpoint || "Bấm Cấu hình Worker"}</div></div>
+          <div class="card"><div class="stat-title">Shop đã kết nối</div><div class="stat-value">${connectedCount}/${channels.length}</div><div class="stat-note">Theo kênh bán trong dashboard</div></div>
+          <div class="card"><div class="stat-title">Ca trong vùng sync</div><div class="stat-value">${candidates.length}</div><div class="stat-note">Dựa theo giờ check-in/end hoặc giờ dự kiến</div></div>
+          <div class="card"><div class="stat-title">Ca đã có dữ liệu Shopee</div><div class="stat-value">${synced}</div><div class="stat-note">GMV/đơn đã được kéo về</div></div>
+          <div class="card"><div class="stat-title">Lỗi sync</div><div class="stat-value">${errorCount}</div><div class="stat-note">Xem cột trạng thái/log bên dưới</div></div>
+        </div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="section-head" style="margin-top:0">
+            <div>
+              <h2>Dữ liệu Shopee theo ca live</h2>
+              <p>Luồng tối ưu: ca check-in → Worker lấy đơn/GMV theo shop đã kết nối và khung giờ thực tế → ghi về Firebase → mọi máy tự cập nhật.</p>
+              <p>Worker gần nhất: <b>${escapeHtml(db.settings?.shopeeLastWorkerSyncAt || "Chưa có")}</b> · ${escapeHtml(db.settings?.shopeeLastWorkerSyncSummary || "Chưa có kết quả")}</p>
+            </div>
+            <div class="toolbar">
+              <button class="green" onclick="runShopeeAutoSyncNow(false)">Sync tất cả ca cần đồng bộ</button>
+              <button class="secondary" onclick="refreshShopeeConnections()">Refresh kết nối</button>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Ngày</th><th>Kênh/Shop</th><th>Nhân sự</th><th>Ca</th><th>Khung giờ lấy đơn</th><th>GMV/Đơn Shopee</th><th>Trạng thái sync</th><th>Thao tác</th></tr></thead>
+              <tbody>${rows || `<tr><td colspan="8">Chưa có ca live nào.</td></tr>`}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+
+      const logs = shopeeLogs().slice(0,40);
+      logWrap.innerHTML = `
+        <div class="card">
+          <div class="section-head" style="margin-top:0">
+            <div>
+              <h2>Log đồng bộ Shopee</h2>
+              <p>Mỗi lần Worker/Cron chạy sẽ lưu lại ca nào được kiểm tra, ca nào cập nhật GMV/đơn, ca nào lỗi.</p>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Thời gian</th><th>Hành động</th><th>Chi tiết</th></tr></thead>
+              <tbody>${logs.length ? logs.map(l=>`
+                <tr>
+                  <td>${escapeHtml(l.time || "-")}</td>
+                  <td><strong>${escapeHtml(l.action || "-")}</strong><br/><span class="meta">${escapeHtml(l.actor || "Worker")}</span></td>
+                  <td><pre style="white-space:pre-wrap;margin:0;font-family:inherit;font-size:12px">${escapeHtml(JSON.stringify(l.details || {}, null, 2))}</pre></td>
+                </tr>
+              `).join("") : `<tr><td colspan="3">Chưa có log Shopee. Hãy bấm Sync tất cả hoặc chờ Cron chạy.</td></tr>`}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    async function syncShopeeShiftById(shiftId){
+      if(!isAdmin()) return;
+      const s = db.shifts.find(x=>x.id === shiftId);
+      if(!s) return toast("Không tìm thấy ca live");
+      try{
+        const didChange = await syncShopeeMetricsForShift(s, {silent:false});
+        await saveDB({immediate:true});
+        renderContent();
+        toast(didChange ? "Đã sync Shopee cho ca này" : "Đã kiểm tra Shopee, dữ liệu chưa thay đổi");
+      }catch(e){
+        if(!s.shopeeMetrics) s.shopeeMetrics = {};
+        s.shopeeMetrics.lastError = e.message;
+        s.shopeeMetrics.syncedAt = nowText();
+        recordDatabaseEvent({module:"shopee_auto_sync", action:"Lỗi sync Shopee cho ca", shift:s, details:{channel:s.shop, error:e.message}});
+        await saveDB({immediate:true});
+        renderContent();
+        toast("Sync ca lỗi: " + e.message);
+      }
+    }
+
     async function refreshShopeeConnections(){
       if(!isAdmin()) return;
       const endpoint = getShopeeSyncEndpoint();
@@ -2944,6 +3217,10 @@
         orders:Number(data.orders || 0),
         orderSnCount:Number(data.orderSnCount || 0),
         note:data.note || "",
+        lastError:"",
+        shop_id:data.shop_id || 0,
+        rawOrderCount:Number(data.rawOrderCount || data.orderSnCount || 0),
+        validOrderCount:Number(data.validOrderCount || data.orders || 0),
         time_from:window?.time_from || data.time_from || 0,
         time_to:window?.time_to || data.time_to || 0,
         syncedAt:nowText(),
@@ -2969,7 +3246,7 @@
       if(!window.time_from || !window.time_to || window.time_to <= window.time_from){
         throw new Error("Khung giờ ca live không hợp lệ");
       }
-      const url = `${endpoint}/api/shopee/live-report?channel=${encodeURIComponent(s.shop || "")}&time_from=${window.time_from}&time_to=${window.time_to}`;
+      const url = `${endpoint}/api/shopee/live-report?channel=${encodeURIComponent(s.shop || "")}&shift_id=${encodeURIComponent(s.id || "")}&time_from=${window.time_from}&time_to=${window.time_to}`;
       const res = await fetch(url, {method:"GET", headers:{"Accept":"application/json"}});
       const data = await res.json().catch(()=>null);
       if(!res.ok || !data || data.error){
@@ -3005,9 +3282,13 @@
         }catch(e){
           fail++;
           console.warn("Không đồng bộ được Shopee cho ca", s.id, e);
+          if(!s.shopeeMetrics) s.shopeeMetrics = {};
+          s.shopeeMetrics.lastError = e.message;
+          s.shopeeMetrics.syncedAt = nowText();
+          recordDatabaseEvent({module:"shopee_auto_sync", action:"Lỗi tự động đồng bộ Shopee", shift:s, details:{channel:s.shop, error:e.message}});
         }
       }
-      if(changed) await saveDB({immediate:true});
+      if(changed || fail) await saveDB({immediate:true});
       lastShopeeAutoSyncText = `${nowText()} · ${ok} ca OK · ${changed} ca cập nhật${fail ? " · "+fail+" lỗi" : ""}`;
       renderContent();
       shopeeAutoSyncRunning = false;
