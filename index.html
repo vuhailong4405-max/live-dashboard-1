@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Live Realtime Dashboard V18 - Shopee Live Session Sync</title>
+  <title>Live Realtime Dashboard V19 - Shopee Live Link Visible</title>
   <style>
     :root{
       --bg:#f5f6fb;
@@ -545,6 +545,31 @@
       </div>
       <div class="actions">
         <button onclick="saveShift()">Lưu ca live</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="liveUrlModal" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h3>Nhập link phiên live Shopee</h3>
+          <div class="meta" id="liveUrlMeta">---</div>
+        </div>
+        <button class="close" onclick="closeModal('liveUrlModal')">×</button>
+      </div>
+      <input type="hidden" id="liveUrlShiftId"/>
+      <div class="warning-note">
+        Dán link từ Creator Center để hệ thống lấy đúng dữ liệu riêng của phiên live, ví dụ:
+        <b>https://banhang.shopee.vn/creator-center/dashboard/live/37650484</b>.
+        Có thể chỉ nhập mã Live ID như <b>37650484</b>.
+      </div>
+      <div class="form-field" style="margin-top:14px">
+        <label>Link phiên live Shopee / Live ID</label>
+        <input id="liveUrlInput" placeholder="Dán link live Shopee hoặc nhập Live ID"/>
+      </div>
+      <div class="actions">
+        <button class="purple" onclick="saveShiftLiveUrl()">Lưu link phiên live</button>
       </div>
     </div>
   </div>
@@ -1607,6 +1632,7 @@
 
           <div class="actions">
             ${roleActions.join("")}
+            <button class="small purple" onclick="openLiveUrlModal('${shift.id}')">${shift.shopeeLiveId ? "Sửa link live" : "Nhập link live"}</button>
             <button class="small secondary" onclick="prepareQuickNote('${shift.id}')">Ghi chú phát sinh</button>
             ${reportActionButton(shift)}
             ${isAdmin() ? `<button class="small" onclick="editShift('${shift.id}')">Sửa ca</button><button class="small red" onclick="deleteShift('${shift.id}')">Xóa</button>` : ""}
@@ -1645,6 +1671,7 @@
                 <td><span class="badge ${st.color}">${st.label}</span></td>
                 <td>${s.goal || "-"}</td>
                 <td>
+                  <button class="small purple" onclick="openLiveUrlModal('${s.id}')">${s.shopeeLiveId ? "Sửa link live" : "Nhập link live"}</button>
                   ${isAdmin()?`<button class="small" onclick="editShift('${s.id}')">Sửa</button> <button class="small red" onclick="deleteShift('${s.id}')">Xóa</button> <button class="small secondary" onclick="openHistoryForShift('${s.id}')">Lịch sử</button>`:`<button class="small secondary" onclick="openHistoryForShift('${s.id}')">Lịch sử</button>`}
                 </td>
               </tr>`;
@@ -1758,6 +1785,8 @@
       {key:"shop",label:"Kênh bán"},
       {key:"hostName",label:"Host live"},
       {key:"supportName",label:"Trợ live"},
+      {key:"shopeeLiveUrl",label:"Link phiên live Shopee"},
+      {key:"shopeeLiveId",label:"Live ID Shopee"},
       {key:"goal",label:"Mục tiêu / ghi chú ca"}
     ];
 
@@ -2519,6 +2548,70 @@
       supportSelect.innerHTML = accountOptions("support", supportSelected, {allowEmpty:true});
     }
 
+    function openLiveUrlModal(shiftId){
+      const s = db.shifts.find(x=>x.id===shiftId);
+      if(!s) return toast("Không tìm thấy ca live");
+      if(!isAdmin() && !isParticipant(s)) return toast("Bạn không có quyền cập nhật link live của ca này");
+      document.getElementById("liveUrlShiftId").value = s.id;
+      document.getElementById("liveUrlInput").value = s.shopeeLiveUrl || s.shopeeLiveId || "";
+      document.getElementById("liveUrlMeta").textContent = shiftLabel(s);
+      openModal("liveUrlModal");
+      setTimeout(()=>document.getElementById("liveUrlInput")?.focus(), 80);
+    }
+
+    function saveShiftLiveUrl(){
+      const shiftId = document.getElementById("liveUrlShiftId").value;
+      const s = db.shifts.find(x=>x.id===shiftId);
+      if(!s) return toast("Không tìm thấy ca live");
+      if(!isAdmin() && !isParticipant(s)) return toast("Bạn không có quyền cập nhật link live của ca này");
+
+      const raw = document.getElementById("liveUrlInput").value;
+      const clean = cleanShopeeLiveUrl(raw);
+      const liveId = parseShopeeLiveId(raw);
+      if(clean && !liveId) return toast("Link live Shopee chưa hợp lệ, chưa tách được Live ID");
+
+      const before = {
+        shopeeLiveUrl:s.shopeeLiveUrl || "",
+        shopeeLiveId:s.shopeeLiveId || ""
+      };
+      s.shopeeLiveUrl = clean;
+      s.shopeeLiveId = liveId;
+      if(!s.shopeeLiveMetrics || typeof s.shopeeLiveMetrics !== "object") s.shopeeLiveMetrics = {};
+      if(liveId){
+        s.shopeeLiveMetrics.dataMode = "live_session";
+        s.shopeeLiveMetrics.status = "waiting_worker_sync";
+        s.shopeeLiveMetrics.note = "Đã nhập Live ID, chờ Worker đồng bộ dữ liệu phiên live Shopee.";
+      }
+      const after = {
+        shopeeLiveUrl:s.shopeeLiveUrl || "",
+        shopeeLiveId:s.shopeeLiveId || ""
+      };
+      recordEditHistory({
+        shift:s,
+        type:"Ca live",
+        action:"Cập nhật link phiên live Shopee",
+        before,
+        after,
+        fields:[
+          {key:"shopeeLiveUrl",label:"Link phiên live Shopee"},
+          {key:"shopeeLiveId",label:"Live ID Shopee"}
+        ]
+      });
+      recordDatabaseEvent({
+        module:"shift",
+        action:"Cập nhật link phiên live Shopee",
+        shift:s,
+        before,
+        after,
+        details:{liveId:liveId || "", liveUrl:clean || ""},
+        employeeInput:true
+      });
+      saveDB({immediate:true});
+      closeModal("liveUrlModal");
+      renderContent();
+      toast(liveId ? "Đã lưu Live ID Shopee" : "Đã xóa link phiên live");
+    }
+
     function openShiftModal(){
       document.getElementById("shiftModalTitle").textContent = "Đăng ký ca live";
       document.getElementById("shiftId").value = "";
@@ -2884,7 +2977,7 @@
       if(!db.settings) db.settings = {};
       const current = getShopeeSyncEndpoint();
       const value = prompt(
-        "Nhập URL Cloudflare Worker Shopee OAuth.\nVí dụ: https://shopee-sync.tenmiencuaban.workers.dev\n\nV18 không cần nhập SHOPEE_SHOPS_JSON thủ công. Sau khi lưu endpoint, vào tab Kết nối Shopee để bấm kết nối từng kênh bán, nhập Live ID khi check-in và theo dõi log đồng bộ.",
+        "Nhập URL Cloudflare Worker Shopee OAuth.\nVí dụ: https://shopee-sync.tenmiencuaban.workers.dev\n\nV19 không cần nhập SHOPEE_SHOPS_JSON thủ công. Sau khi lưu endpoint, vào tab Kết nối Shopee để bấm kết nối từng kênh bán, nhập Live ID khi check-in và theo dõi log đồng bộ.",
         current
       );
       if(value === null) return;
@@ -2948,7 +3041,7 @@
             <div>
               <h2 style="font-size:18px">Tự động đồng bộ Shopee</h2>
               <p>${enabled ? "Đang bật" : "Chưa bật"} · ${candidates.length} ca trong vùng cần đồng bộ · Lần gần nhất: <b>${lastShopeeAutoSyncText}</b></p>
-              <p>V18 ưu tiên lấy dữ liệu theo <b>Live ID phiên live Shopee</b>. Nếu chưa có Live ID hoặc app chưa có API Live, dashboard sẽ hiển thị lỗi rõ để không lấy nhầm đơn ngoài phiên live.</p>
+              <p>V19 ưu tiên lấy dữ liệu theo <b>Live ID phiên live Shopee</b>. Nếu chưa có Live ID hoặc app chưa có API Live, dashboard sẽ hiển thị lỗi rõ để không lấy nhầm đơn ngoài phiên live.</p>
             </div>
             <div class="toolbar">
               ${isAdmin()?`<button class="secondary" onclick="openShopeeSettings()">Cấu hình Worker</button>`:""}
@@ -3113,7 +3206,7 @@
             <td><strong>${escapeHtml(s.hostName || "-")}</strong><br/><span class="meta">Trợ: ${escapeHtml(supportNameLabel(s))}</span></td>
             <td><span class="badge ${st.color}">${st.label}</span></td>
             <td>${shopeeWindowTextForShift(s)}</td>
-            <td>${money(gmv || 0)}<br/><span class="meta">${Number(orders || 0).toLocaleString("vi-VN")} đơn · View: ${Number((sm.view !== undefined ? sm.view : r.view) || 0).toLocaleString("vi-VN")}</span></td>
+            <td>${money(gmv || 0)}<br/><span class="meta">${Number(orders || 0).toLocaleString("vi-VN")} đơn · View: ${Number((sm.view !== undefined ? sm.view : r.view) || 0).toLocaleString("vi-VN")}</span><br/><span class="meta">CCU: ${Number(sm.ccu || 0).toLocaleString("vi-VN")} · Peak: ${Number(sm.peakCcu || 0).toLocaleString("vi-VN")} · Like: ${Number(sm.likes || 0).toLocaleString("vi-VN")} · Share: ${Number(sm.shares || 0).toLocaleString("vi-VN")}</span></td>
             <td><span class="badge ${syncState.color}">${syncState.label}</span><br/><span class="meta">${escapeHtml(syncState.note || "-")}</span></td>
             <td>
               <button class="small green" onclick="syncShopeeShiftById('${s.id}')">Sync ca</button>
@@ -3282,8 +3375,13 @@
         co:data.co !== undefined ? String(data.co) : "",
         aov:Number(data.aov || (data.orders ? Math.round(Number(data.gmv || 0)/Number(data.orders || 1)) : 0)),
         atc:Number(data.atc || data.add_to_cart || data.addToCart || 0),
-        comments:Number(data.comments || data.comment || 0),
-        avgWatch:String(data.avgWatch || data.avg_watch || data.average_watch_time || ""),
+        comments:Number(data.comments || data.comment || data.comment_count || 0),
+        likes:Number(data.likes || data.like || data.like_count || 0),
+        shares:Number(data.shares || data.share || data.share_count || 0),
+        ccu:Number(data.ccu || 0),
+        peakCcu:Number(data.peak_ccu || data.peakCcu || 0),
+        engageCcu1m:Number(data.engage_ccu_1m || data.engageCcu1m || 0),
+        avgWatch:String(data.avgWatch || data.avg_watch || data.average_watch_time || data.avg_view_duration || ""),
         orderSnCount:Number(data.orderSnCount || 0),
         note:data.note || "",
         lastError:"",
