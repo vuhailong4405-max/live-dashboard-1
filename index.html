@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Live Realtime Dashboard V19 - Shopee Live Link Visible</title>
+  <title>Live Realtime Dashboard V20 - Shopee Live Link Visible</title>
   <style>
     :root{
       --bg:#f5f6fb;
@@ -2977,7 +2977,7 @@
       if(!db.settings) db.settings = {};
       const current = getShopeeSyncEndpoint();
       const value = prompt(
-        "Nhập URL Cloudflare Worker Shopee OAuth.\nVí dụ: https://shopee-sync.tenmiencuaban.workers.dev\n\nV19 không cần nhập SHOPEE_SHOPS_JSON thủ công. Sau khi lưu endpoint, vào tab Kết nối Shopee để bấm kết nối từng kênh bán, nhập Live ID khi check-in và theo dõi log đồng bộ.",
+        "Nhập URL Cloudflare Worker Shopee OAuth.\nVí dụ: https://shopee-sync.tenmiencuaban.workers.dev\n\nV20 không cần nhập SHOPEE_SHOPS_JSON thủ công. Sau khi lưu endpoint, vào tab Kết nối Shopee để bấm kết nối từng kênh bán, nhập Live ID khi check-in và theo dõi log đồng bộ.",
         current
       );
       if(value === null) return;
@@ -3041,7 +3041,7 @@
             <div>
               <h2 style="font-size:18px">Tự động đồng bộ Shopee</h2>
               <p>${enabled ? "Đang bật" : "Chưa bật"} · ${candidates.length} ca trong vùng cần đồng bộ · Lần gần nhất: <b>${lastShopeeAutoSyncText}</b></p>
-              <p>V19 ưu tiên lấy dữ liệu theo <b>Live ID phiên live Shopee</b>. Nếu chưa có Live ID hoặc app chưa có API Live, dashboard sẽ hiển thị lỗi rõ để không lấy nhầm đơn ngoài phiên live.</p>
+              <p>V20 ưu tiên lấy dữ liệu theo <b>Live ID phiên live Shopee</b>. Nếu chưa có Live ID hoặc app chưa có API Live, dashboard sẽ hiển thị lỗi rõ để không lấy nhầm đơn ngoài phiên live.</p>
             </div>
             <div class="toolbar">
               ${isAdmin()?`<button class="secondary" onclick="openShopeeSettings()">Cấu hình Worker</button>`:""}
@@ -3096,6 +3096,7 @@
         const conn = connections[ch] || null;
         const shopId = conn?.shop_id || "-";
         const shopName = conn?.shop_name || conn?.merchant_name || "-";
+        const userId = conn?.user_id || conn?.seller_id || conn?.main_account_id || conn?.shop_user_id || "-";
         const connectedAt = conn?.connectedAt || conn?.updatedAt || "-";
         const expireAt = conn?.expire_at ? new Date(Number(conn.expire_at) * 1000).toLocaleString("vi-VN") : "-";
         const lastSync = conn?.lastSyncAt || "-";
@@ -3104,6 +3105,7 @@
           <td><strong>${ch}</strong></td>
           <td>${shopeeConnectionBadge(conn)}${lastError}</td>
           <td>${shopId}</td>
+          <td>${userId}</td>
           <td>${shopName}</td>
           <td>${connectedAt}<br/><span class="meta">Token hết hạn: ${expireAt}</span></td>
           <td>${lastSync}</td>
@@ -3130,12 +3132,12 @@
         </div>
         <div class="table-scroll">
           <table>
-            <thead><tr><th>Kênh bán</th><th>Trạng thái</th><th>Shop ID</th><th>Tên shop</th><th>Ngày kết nối</th><th>Lần sync cuối</th><th>Thao tác</th></tr></thead>
-            <tbody>${rows || `<tr><td colspan="7">Chưa có kênh bán</td></tr>`}</tbody>
+            <thead><tr><th>Kênh bán</th><th>Trạng thái</th><th>Shop ID</th><th>User ID</th><th>Tên shop</th><th>Ngày kết nối</th><th>Lần sync cuối</th><th>Thao tác</th></tr></thead>
+            <tbody>${rows || `<tr><td colspan="8">Chưa có kênh bán</td></tr>`}</tbody>
           </table>
         </div>
         <div class="warning-note">
-          Lưu ý: Worker vẫn cần Partner ID/Partner Key của app Shopee Open Platform. Nhưng token của từng shop sẽ được lưu tự động vào Firestore sau khi shop ủy quyền.
+          Lưu ý: Worker vẫn cần Partner ID/Partner Key của app Shopee Open Platform. Với API livestream, Shopee yêu cầu thêm <b>user_id</b>; bản V20 sẽ tự lưu user_id nếu Shopee trả về khi ủy quyền, hoặc bạn có thể cấu hình biến <b>SHOPEE_USER_ID_MAP_JSON</b> trong Worker nếu cần.
         </div>
       `;
     }
