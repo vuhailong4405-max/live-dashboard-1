@@ -771,12 +771,48 @@
     let allChannelAutoCountdownTimer = null;
     let allChannelNextAutoSyncAt = 0;
     let lastAllChannelAutoSyncText = "Chưa chạy";
+    let pendingAllChannelRender = false;
     let allChannelFilter = "all";
     let allChannelDateFrom = todayISO();
     let allChannelDateTo = todayISO();
     let allChannelPeriodMode = "day";
     let allChannelCompareMode = "previous";
     let allChannelMonth = todayISO().slice(0,7);
+    let allChannelMetricBasis = "create_time";
+
+    function isAllChannelControlActive(){
+      const wrap = document.getElementById("allChannelDataWrap");
+      const el = document.activeElement;
+      if(!wrap || !el || !wrap.contains(el)) return false;
+      const tag = String(el.tagName || "").toUpperCase();
+      return ["SELECT","INPUT","TEXTAREA","BUTTON"].includes(tag);
+    }
+
+    function updateAllChannelAutoStatusOnly(){
+      const line = document.getElementById("allChannelAutoStatusLine");
+      if(line){
+        line.innerHTML = `<b>Tự động cập nhật:</b> ${escapeHtml(allChannelAutoStatusText())} · Lần auto gần nhất: <b>${escapeHtml(lastAllChannelAutoSyncText)}</b>`;
+      }
+    }
+
+    function renderAllChannelDataDashboardSafe(){
+      if(isAllChannelControlActive()){
+        pendingAllChannelRender = true;
+        updateAllChannelAutoStatusOnly();
+        return;
+      }
+      pendingAllChannelRender = false;
+      renderAllChannelDataDashboard();
+    }
+
+    document.addEventListener("focusout", (e)=>{
+      if(pendingAllChannelRender && e.target && e.target.closest && e.target.closest("#allChannelDataWrap")){
+        setTimeout(()=>{
+          if(!isAllChannelControlActive()) renderAllChannelDataDashboardSafe();
+        }, 200);
+      }
+    });
+
 
     // ================= FIREBASE CLOUD DATABASE =================
     // BƯỚC BẮT BUỘC: thay các giá trị dưới đây bằng firebaseConfig của dự án Firebase của bạn.
@@ -3304,6 +3340,11 @@
       renderAllChannelDataDashboard();
     }
 
+    function setAllChannelMetricBasis(value){
+      allChannelMetricBasis = value || "create_time";
+      renderAllChannelDataDashboard();
+    }
+
     function setAllChannelDate(which, value){
       if(which === "from") allChannelDateFrom = value || todayISO();
       if(which === "to") allChannelDateTo = value || allChannelDateFrom || todayISO();
@@ -3443,10 +3484,10 @@
             <div>
               <h2 style="font-size:20px">Chọn thời gian xem dữ liệu Shopee</h2>
               <p>Chọn shop/kênh bán để lọc hiển thị. Khi bấm đồng bộ, hệ thống vẫn lấy đủ tất cả shop đã kết nối và lưu snapshot đầy đủ để không mất dữ liệu shop khác.</p>
-              <p>${sourceText}</p>
+              <p>${sourceText} · Đối soát: ${allChannelMetricBasis === "pay_time" ? "thanh toán" : allChannelMetricBasis === "update_time" ? "cập nhật đơn" : "tạo đơn"}</p>
               <p class="compare-note">Kỳ hiện tại: <b>${escapeHtml(data.date_from || allChannelDateFrom)} đến ${escapeHtml(data.date_to || allChannelDateTo)}</b> · Kỳ so sánh: <b>${escapeHtml(compareRangeText(view))}</b></p>
               ${data.lastError ? `<p style="color:#b91c1c"><b>Lỗi gần nhất:</b> ${escapeHtml(data.lastError)}</p>` : ""}
-              <p><b>Tự động cập nhật:</b> ${escapeHtml(allChannelAutoStatusText())} · Lần auto gần nhất: <b>${escapeHtml(lastAllChannelAutoSyncText)}</b></p>
+              <p id="allChannelAutoStatusLine"><b>Tự động cập nhật:</b> ${escapeHtml(allChannelAutoStatusText())} · Lần auto gần nhất: <b>${escapeHtml(lastAllChannelAutoSyncText)}</b></p>
             </div>
             <div class="toolbar">
               <button class="secondary" onclick="setAllChannelAutoSyncEnabled(!db.settings.shopeeAllChannelAutoSyncEnabled)">${db?.settings?.shopeeAllChannelAutoSyncEnabled ? "Tắt auto" : "Bật auto"}</button>
@@ -3467,6 +3508,14 @@
                 <option value="range" ${allChannelPeriodMode==="range"?"selected":""}>Khoảng ngày</option>
               </select>
             </div>
+            <div class="form-field">
+              <label>Đối soát theo</label>
+              <select onchange="setAllChannelMetricBasis(this.value)">
+                <option value="create_time" ${allChannelMetricBasis==="create_time"?"selected":""}>Thời gian tạo đơn</option>
+                <option value="pay_time" ${allChannelMetricBasis==="pay_time"?"selected":""}>Thời gian thanh toán</option>
+                <option value="update_time" ${allChannelMetricBasis==="update_time"?"selected":""}>Thời gian cập nhật đơn</option>
+              </select>
+            </div>
             ${periodControls}
             <div class="form-field">
               <label>So sánh</label>
@@ -3481,7 +3530,7 @@
             </div>
           </div>
           <div class="warning-note" style="margin-top:12px">
-            Ví dụ: chọn <b>Theo ngày</b> để xem lại 1 ngày, chọn <b>Theo tháng</b> để xem tổng cả tháng, hoặc chọn <b>Khoảng ngày</b> để xem giai đoạn tùy ý. Nếu kỳ đang xem có ngày hôm nay, dashboard sẽ tự cập nhật gần realtime khi web đang mở. Các chỉ số % bên dưới so sánh với snapshot kỳ trước đã lưu, không gọi Shopee lại lần thứ hai.
+            Ví dụ: chọn <b>Theo ngày</b> để xem lại 1 ngày, chọn <b>Theo tháng</b> để xem tổng cả tháng, hoặc chọn <b>Khoảng ngày</b> để xem giai đoạn tùy ý. V29: Dữ liệu được lưu dạng snapshot từng ngày. Ngày hôm nay tự cập nhật gần realtime; ngày/tháng cũ sẽ cộng từ snapshot đã lưu để giảm lệch và tránh quá tải Worker.
           </div>
         </div>
 
@@ -3637,7 +3686,7 @@
     }
 
     async function fetchAllChannelSingleRange(endpoint, channel, dateFrom, dateTo, timeFromSec=0, timeToSec=0){
-      let url = `${endpoint}/api/shopee/all-channel-data?channel=${encodeURIComponent(channel)}&date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}&period=${encodeURIComponent(allChannelPeriodMode)}&compare=none&save=0`;
+      let url = `${endpoint}/api/shopee/all-channel-data?channel=${encodeURIComponent(channel)}&date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}&period=${encodeURIComponent(allChannelPeriodMode)}&compare=none&save=0&metric_basis=${encodeURIComponent(allChannelMetricBasis || "create_time")}`;
       if(timeFromSec && timeToSec && Number(timeToSec) > Number(timeFromSec)){
         url += `&time_from=${encodeURIComponent(timeFromSec)}&time_to=${encodeURIComponent(timeToSec)}`;
       }
@@ -3790,6 +3839,138 @@
       };
     }
 
+    function dateListBetweenISO(dateFrom, dateTo){
+      const out = [];
+      let cur = String(dateFrom || todayISO()).slice(0,10);
+      const end = String(dateTo || cur).slice(0,10);
+      let guard = 0;
+      while(cur <= end && guard < 370){
+        out.push(cur);
+        cur = dateAddISO(cur, 1);
+        guard++;
+      }
+      return out;
+    }
+
+    function findSnapshotExact(dateFrom, dateTo, periodMode){
+      return allChannelSnapshots().slice().sort((a,b)=>Number(b.lastSyncAtTs||0)-Number(a.lastSyncAtTs||0))
+        .find(s=>snapshotMatchesPeriod(s, dateFrom, dateTo, periodMode) && Array.isArray(s.channels) && s.channels.length) || null;
+    }
+
+    function snapshotToRows(snap){
+      return Array.isArray(snap?.channels) ? snap.channels.map(ch=>({...ch, fromSnapshot:true, lastError:ch.lastError || ""})) : [];
+    }
+
+    function makeSnapshotFromData(data, periodMode="day"){
+      return {
+        id:`snapshot_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+        source:data.source || "client_snapshot_v29",
+        periodMode,
+        compareMode:data.compareMode || "none",
+        selectedChannel:data.selectedChannel || "all",
+        metricBasis:allChannelMetricBasis || "create_time",
+        date_from:data.date_from,
+        date_to:data.date_to,
+        summary:data.summary || emptyAllChannelSummary(),
+        channelCount:(data.channels || []).length,
+        channels:(data.channels || []).map(ch=>({
+          channel:ch.channel,
+          shop_id:ch.shop_id || 0,
+          gmv:Number(ch.gmv || 0),
+          totalOrders:Number(ch.totalOrders || 0),
+          validOrders:Number(ch.validOrders || 0),
+          cancelGmv:Number(ch.cancelGmv || 0),
+          cancelOrders:Number(ch.cancelOrders || 0),
+          aov:Number(ch.aov || 0),
+          hourly:Array.isArray(ch.hourly) ? ch.hourly : [],
+          topProducts:Array.isArray(ch.topProducts) ? ch.topProducts.slice(0,20) : [],
+          syncedAt:ch.syncedAt || data.lastSyncAt || "",
+          lastError:ch.lastError || "",
+          metricBasis:ch.metricBasis || allChannelMetricBasis || "create_time"
+        })),
+        hourly:Array.isArray(data.hourly) ? data.hourly : [],
+        topProducts:Array.isArray(data.topProducts) ? data.topProducts.slice(0,50) : [],
+        lastSyncAt:data.lastSyncAt || nowText(),
+        lastSyncAtTs:data.lastSyncAtTs || Date.now(),
+        lastError:data.lastError || ""
+      };
+    }
+
+    function pushAllChannelSnapshot(snapshot){
+      if(!snapshot || !snapshot.date_from || !snapshot.date_to) return;
+      if(!Array.isArray(db.settings.shopeeAllChannelSnapshots)) db.settings.shopeeAllChannelSnapshots = [];
+      const key = [snapshot.date_from, snapshot.date_to, snapshot.periodMode || "day", snapshot.metricBasis || allChannelMetricBasis || "create_time"].join("|");
+      db.settings.shopeeAllChannelSnapshots = db.settings.shopeeAllChannelSnapshots.filter(s=>{
+        const k = [s.date_from, s.date_to, s.periodMode || "day", s.metricBasis || "create_time"].join("|");
+        return k !== key;
+      });
+      db.settings.shopeeAllChannelSnapshots.unshift(snapshot);
+      db.settings.shopeeAllChannelSnapshots = db.settings.shopeeAllChannelSnapshots.slice(0,500);
+    }
+
+    async function fetchAllChannelDayLedger(endpoint, channels, day, forceFresh=false){
+      const today = todayISO();
+      const cached = findSnapshotExact(day, day, "day");
+      // V29: với ngày cũ, ưu tiên snapshot đã lưu để tránh gọi Shopee lặp lại gây lệch/timeout.
+      if(cached && day !== today && !forceFresh){
+        const rows = snapshotToRows(cached);
+        return {rows, merged:mergeAllChannelClient(rows), errors:[], fromSnapshot:true, snapshot:cached};
+      }
+      const part = await fetchAllChannelRangeSplit(endpoint, channels, day, day);
+      // Nếu một shop lỗi nhưng snapshot ngày đó đã có, giữ lại dữ liệu cũ của shop đó thay vì đưa về 0.
+      if(cached && Array.isArray(cached.channels)){
+        const cacheMap = new Map(cached.channels.map(r=>[String(r.channel||""), r]));
+        part.rows = part.rows.map(row=>{
+          if(row.lastError && (!Number(row.totalOrders||0) && !Number(row.gmv||0)) && cacheMap.has(String(row.channel||""))){
+            return {...cacheMap.get(String(row.channel||"")), fromSnapshot:true, lastError:`${row.lastError} · đã giữ dữ liệu snapshot cũ`};
+          }
+          return row;
+        });
+        part.merged = mergeAllChannelClient(part.rows);
+      }
+      const data = {
+        source:"shopee_order_api_daily_ledger_v29",
+        date_from:day,
+        date_to:day,
+        selectedChannel:"all",
+        periodMode:"day",
+        compareMode:"none",
+        metricBasis:allChannelMetricBasis || "create_time",
+        summary:part.merged.summary,
+        channels:part.rows,
+        hourly:part.merged.hourly,
+        topProducts:part.merged.topProducts,
+        lastSyncAt:nowText(),
+        lastSyncAtTs:Date.now(),
+        lastError:part.errors.join(" | ")
+      };
+      const snap = makeSnapshotFromData(data, "day");
+      pushAllChannelSnapshot(snap);
+      return {...part, snapshot:snap, fromSnapshot:false};
+    }
+
+    async function fetchAllChannelPeriodLedger(endpoint, channels, dateFrom, dateTo, periodMode){
+      const days = dateListBetweenISO(dateFrom, dateTo);
+      const dayParts = [];
+      const errors = [];
+      for(const day of days){
+        const part = await fetchAllChannelDayLedger(endpoint, channels, day, false);
+        dayParts.push(part);
+        if(part.errors && part.errors.length) errors.push(`${day}: ${part.errors.join(" | ")}`);
+      }
+      const byChannel = new Map();
+      for(const part of dayParts){
+        for(const row of (part.rows || [])){
+          const ch = String(row.channel || "");
+          if(!byChannel.has(ch)) byChannel.set(ch, []);
+          byChannel.get(ch).push(row);
+        }
+      }
+      const rows = [...byChannel.entries()].map(([ch, rows])=>combineRowsForChannel(ch, rows, dateFrom, dateTo, rows.map(r=>r.lastError).filter(Boolean)));
+      const merged = mergeAllChannelClient(rows);
+      return {rows, merged, errors, dayParts};
+    }
+
     async function syncAllChannelData(silent=true, options={}){
       if(!isAdmin()) return;
       applyAllChannelPeriodDates();
@@ -3804,9 +3985,10 @@
         const channelsToFetch = connectedChannels;
         if(!channelsToFetch.length) throw new Error("Chưa có shop nào đã kết nối Shopee");
 
-        // V26: chia nhỏ request theo từng shop; nếu 1 shop quá nhiều đơn sẽ tự chia tiếp theo 6 giờ/1 giờ.
-        // Cách này tránh lỗi Cloudflare: Too many subrequests và tránh mất dữ liệu shop khác khi một shop lỗi. Kỳ so sánh sẽ ưu tiên đọc từ snapshot đã lưu thay vì gọi Shopee lần nữa.
-        const currentPart = await fetchAllChannelRangeSplit(endpoint, channelsToFetch, allChannelDateFrom, allChannelDateTo);
+        // V29: đồng bộ dạng ledger theo ngày.
+        // Ngày hôm nay lấy mới từ Shopee để realtime; ngày cũ ưu tiên snapshot đã lưu để tránh gọi lại Shopee gây lệch/timeout.
+        // Tháng/khoảng ngày được cộng từ snapshot theo từng ngày, không gọi một request khổng lồ nữa.
+        const currentPart = await fetchAllChannelPeriodLedger(endpoint, channelsToFetch, allChannelDateFrom, allChannelDateTo, allChannelPeriodMode);
         let comparisonData = null;
         if(allChannelCompareMode !== "none"){
           const prev = previousAllChannelRange(allChannelDateFrom, allChannelDateTo, allChannelPeriodMode);
@@ -3818,12 +4000,13 @@
         }
 
         const data = {
-          source: options.auto ? "shopee_order_api_all_channel_auto_refresh_v27" : "shopee_order_api_all_channel_client_split_v27_snapshot_compare",
+          source: options.auto ? "shopee_order_api_all_channel_auto_refresh_v29_ledger" : "shopee_order_api_all_channel_v29_ledger_snapshot",
           date_from:allChannelDateFrom,
           date_to:allChannelDateTo,
           selectedChannel:allChannelFilter,
           periodMode:allChannelPeriodMode,
           compareMode:allChannelCompareMode,
+          metricBasis:allChannelMetricBasis || "create_time",
           summary:currentPart.merged.summary,
           channels:currentPart.rows,
           hourly:currentPart.merged.hourly,
@@ -3840,6 +4023,7 @@
           compareMode:data.compareMode,
           // selectedChannel là bộ lọc đang xem, nhưng snapshot luôn lưu đủ allChannels bên dưới.
           selectedChannel:data.selectedChannel,
+          metricBasis:data.metricBasis || allChannelMetricBasis || "create_time",
           date_from:data.date_from,
           date_to:data.date_to,
           summary:data.summary,
@@ -3869,18 +4053,17 @@
         if(!Array.isArray(db.settings.shopeeAllChannelSnapshots)) db.settings.shopeeAllChannelSnapshots = [];
         const shouldSaveSnapshot = options.saveSnapshot !== false && (!options.auto || shouldSaveAutoAllChannelSnapshot());
         if(shouldSaveSnapshot){
-          db.settings.shopeeAllChannelSnapshots.unshift(data.snapshot);
-          db.settings.shopeeAllChannelSnapshots = db.settings.shopeeAllChannelSnapshots.slice(0,250);
+          pushAllChannelSnapshot(data.snapshot);
         }
         await saveDB({immediate:true});
-        renderAllChannelDataDashboard();
+        if(options.auto) renderAllChannelDataDashboardSafe(); else renderAllChannelDataDashboard();
         if(!silent) toast(data.lastError ? "Đã cập nhật dữ liệu, nhưng có một số shop bị lỗi" : (shouldSaveSnapshot ? "Đã đồng bộ và lưu snapshot dữ liệu toàn kênh Shopee" : "Đã cập nhật dữ liệu toàn kênh Shopee"));
       }catch(e){
         if(!db.settings) db.settings = {};
         if(!db.settings.shopeeAllChannelData) db.settings.shopeeAllChannelData = {};
         db.settings.shopeeAllChannelData.lastError = e.message;
         await saveDB({immediate:true});
-        renderAllChannelDataDashboard();
+        if(options.auto) renderAllChannelDataDashboardSafe(); else renderAllChannelDataDashboard();
         toast("Đồng bộ toàn kênh lỗi: " + e.message);
       }
     }
@@ -3890,9 +4073,15 @@
       if(allChannelAutoSyncRunning || !currentUser || !isAdmin()) return;
       const endpoint = getShopeeSyncEndpoint();
       if(!endpoint || db?.settings?.shopeeAllChannelAutoSyncEnabled === false) return;
+      if(isAllChannelControlActive()){
+        lastAllChannelAutoSyncText = nowText() + " · tạm dừng vì bạn đang thao tác bộ lọc";
+        allChannelNextAutoSyncAt = Date.now() + Number(db?.settings?.shopeeAllChannelAutoSyncIntervalMs || ALL_CHANNEL_AUTO_SYNC_INTERVAL_MS);
+        updateAllChannelAutoStatusOnly();
+        return;
+      }
       if(!isAllChannelPeriodRealtimeEligible()){
         lastAllChannelAutoSyncText = nowText() + " · bỏ qua vì đang xem kỳ cũ";
-        renderAllChannelDataDashboard();
+        renderAllChannelDataDashboardSafe();
         return;
       }
       allChannelAutoSyncRunning = true;
@@ -3906,7 +4095,7 @@
       }finally{
         allChannelAutoSyncRunning = false;
         allChannelNextAutoSyncAt = Date.now() + Number(db?.settings?.shopeeAllChannelAutoSyncIntervalMs || ALL_CHANNEL_AUTO_SYNC_INTERVAL_MS);
-        renderAllChannelDataDashboard();
+        renderAllChannelDataDashboardSafe();
       }
     }
 
@@ -3919,7 +4108,7 @@
         runAllChannelAutoSyncNow(true);
       }, interval);
       allChannelAutoCountdownTimer = setInterval(()=>{
-        if(activeView === "allchannels") renderAllChannelDataDashboard();
+        if(activeView === "allchannels") updateAllChannelAutoStatusOnly();
       }, 1000);
       setTimeout(()=>runAllChannelAutoSyncNow(true), 2500);
     }
