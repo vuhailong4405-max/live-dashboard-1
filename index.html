@@ -763,8 +763,10 @@
     const SHOPEE_AUTO_SYNC_INTERVAL_MS = 60000; // tự động đồng bộ live shift mỗi 60 giây khi dashboard đang mở
     const ALL_CHANNEL_AUTO_SYNC_INTERVAL_MS = 120000; // tự động cập nhật dữ liệu toàn kênh mỗi 2 phút khi dashboard đang mở
     const ALL_CHANNEL_AUTO_SNAPSHOT_GAP_MS = 10 * 60 * 1000; // tự lưu snapshot định kỳ, tránh lưu quá dày
-    const ALL_CHANNEL_FETCH_TIMEOUT_MS = 28000; // V31: tránh treo khi Worker/Shopee trả chậm
-    const ALL_CHANNEL_HEAVY_SHOP_RE = /gooby/i;
+    const ALL_CHANNEL_FETCH_TIMEOUT_MS = 28000; // V32: tránh treo khi Worker/Shopee trả chậm
+    // V32: chỉ coi đúng kênh "Gooby" là shop nặng. Không dùng /gooby/i nữa vì sẽ bắt nhầm "Gooby Mall".
+    const ALL_CHANNEL_HEAVY_SHOP_NAMES = new Set(["gooby"]);
+    const ALL_CHANNEL_GOOBY_AUTO_MAX_GAP_MS = 3 * 60 * 1000; // khi xem tất cả shop, Gooby được ưu tiên nếu quá 3 phút chưa tự cập nhật
     const ALL_CHANNEL_HEAVY_SHOP_CHUNK_MINUTES = 30;
     const ALL_CHANNEL_HEAVY_SHOP_RETRY_MINUTES = 15;
     let shopeeAutoSyncTimer = null;
@@ -3534,7 +3536,7 @@
             </div>
           </div>
           <div class="warning-note" style="margin-top:12px">
-            Ví dụ: chọn <b>Theo ngày</b> để xem lại 1 ngày, chọn <b>Theo tháng</b> để xem tổng cả tháng, hoặc chọn <b>Khoảng ngày</b> để xem giai đoạn tùy ý. V31: Ưu tiên kênh đang xem, auto chỉ cập nhật từng shop để tránh Gooby bị delay; bấm đồng bộ thủ công vẫn lấy đủ tất cả shop. Ngày hôm nay tự cập nhật gần realtime; ngày/tháng cũ cộng từ snapshot đã lưu để giảm lệch và tránh quá tải Worker.
+            Ví dụ: chọn <b>Theo ngày</b> để xem lại 1 ngày, chọn <b>Theo tháng</b> để xem tổng cả tháng, hoặc chọn <b>Khoảng ngày</b> để xem giai đoạn tùy ý. V32: Sửa lỗi Gooby Mall bị lặp và Gooby không cập nhật. Auto ưu tiên đúng shop đang chọn theo tên chính xác, Gooby Mall không còn bị nhận nhầm là Gooby. Ngày hôm nay tự cập nhật gần realtime; ngày/tháng cũ cộng từ snapshot đã lưu để giảm lệch và tránh quá tải Worker.
           </div>
         </div>
 
@@ -3779,12 +3781,49 @@
       };
     }
 
+
+    function normalizeChannelKey(channel){
+      return String(channel || "").trim().toLowerCase().replace(/\s+/g," ");
+    }
+
+    function isSameChannelName(a,b){
+      return normalizeChannelKey(a) === normalizeChannelKey(b);
+    }
+
+    function isAllChannelHeavyShop(channel){
+      return ALL_CHANNEL_HEAVY_SHOP_NAMES.has(normalizeChannelKey(channel));
+    }
+
+    function getAllChannelLastAutoMap(){
+      if(!db.settings) db.settings = {};
+      if(!db.settings.shopeeAllChannelLastAutoByChannel || typeof db.settings.shopeeAllChannelLastAutoByChannel !== "object"){
+        db.settings.shopeeAllChannelLastAutoByChannel = {};
+      }
+      return db.settings.shopeeAllChannelLastAutoByChannel;
+    }
+
+    function markAllChannelAutoPicked(channel){
+      const map = getAllChannelLastAutoMap();
+      map[normalizeChannelKey(channel)] = Date.now();
+      db.settings.shopeeAllChannelLastAutoByChannel = map;
+    }
+
+    function sortAllChannelAutoQueue(channels){
+      const arr = Array.isArray(channels) ? channels.slice() : [];
+      return arr.sort((a,b)=>{
+        const ah = isAllChannelHeavyShop(a) ? 0 : 1;
+        const bh = isAllChannelHeavyShop(b) ? 0 : 1;
+        if(ah !== bh) return ah - bh;
+        return String(a).localeCompare(String(b), "vi");
+      });
+    }
+
     async function fetchAllChannelOneShopSafe(endpoint, channel, dateFrom, dateTo){
-      // V31: shop nhiều đơn như Gooby dùng block 30 phút, lỗi thì rơi xuống 15 phút.
+      // V32: shop nhiều đơn như Gooby dùng block 30 phút, lỗi thì rơi xuống 15 phút.
       // Các shop nhẹ vẫn dùng block 3 giờ để nhanh. Cách này giảm thiếu đơn/delay cho Gooby.
       const rows = [];
       const errors = [];
-      const isHeavy = ALL_CHANNEL_HEAVY_SHOP_RE.test(String(channel || ""));
+      const isHeavy = isAllChannelHeavyShop(channel);
       const chunks = isHeavy
         ? allChannelMinuteChunks(dateFrom, dateTo, ALL_CHANNEL_HEAVY_SHOP_CHUNK_MINUTES)
         : allChannelTimeChunks(dateFrom, dateTo, 3);
@@ -4029,23 +4068,53 @@
     }
 
     function pickChannelsForAllChannelSync(connectedChannels, options={}){
-      const channels = Array.isArray(connectedChannels) ? connectedChannels.slice() : [];
+      const channels = Array.isArray(connectedChannels) ? [...new Set(connectedChannels.map(String).filter(Boolean))] : [];
       if(!channels.length) return [];
       const selected = String(allChannelFilter || "all");
-      // Manual button luôn đồng bộ toàn bộ shop, nhưng ưu tiên shop đang xem trước để số liệu shop đó lên nhanh.
+      const exactSelected = selected === "all" ? "" : channels.find(ch=>isSameChannelName(ch, selected));
+      const exactGooby = channels.find(ch=>isAllChannelHeavyShop(ch));
+
+      // Manual button vẫn đồng bộ toàn bộ shop để lưu đủ snapshot, nhưng đưa shop đang xem lên đầu.
+      // V32: so khớp chính xác, chọn Gooby sẽ không bắt nhầm Gooby Mall.
       if(!options.auto){
-        if(selected !== "all" && channels.includes(selected)) return [selected, ...channels.filter(ch=>ch!==selected)];
-        if(channels.includes("Gooby")) return ["Gooby", ...channels.filter(ch=>ch!=="Gooby")];
+        if(exactSelected) return [exactSelected, ...channels.filter(ch=>!isSameChannelName(ch, exactSelected))];
+        if(exactGooby) return [exactGooby, ...channels.filter(ch=>!isSameChannelName(ch, exactGooby))];
         return channels;
       }
-      // Auto refresh: chỉ cập nhật 1 shop mỗi vòng để không kéo Gooby + các shop khác cùng lúc.
-      // Nếu bạn đang xem Gooby, auto ưu tiên Gooby, dữ liệu shop khác giữ từ snapshot/lần sync trước.
-      if(selected !== "all" && channels.includes(selected)) return [selected];
-      const cursor = Number(db?.settings?.shopeeAllChannelAutoCursor || 0);
-      const idx = ((cursor % channels.length) + channels.length) % channels.length;
-      const picked = channels[idx];
+
+      // Auto refresh: nếu người dùng đang xem một shop cụ thể thì chỉ cập nhật đúng shop đó.
+      // Không tự nhảy sang Gooby Mall khi đang chọn Gooby.
+      if(exactSelected){
+        markAllChannelAutoPicked(exactSelected);
+        return [exactSelected];
+      }
+
+      // Khi xem tổng tất cả shop: cập nhật từng shop một vòng, nhưng Gooby được ưu tiên nếu quá lâu chưa cập nhật.
+      const lastMap = getAllChannelLastAutoMap();
+      if(exactGooby){
+        const lastGooby = Number(lastMap[normalizeChannelKey(exactGooby)] || 0);
+        if(!lastGooby || Date.now() - lastGooby > ALL_CHANNEL_GOOBY_AUTO_MAX_GAP_MS){
+          markAllChannelAutoPicked(exactGooby);
+          return [exactGooby];
+        }
+      }
+
       if(!db.settings) db.settings = {};
-      db.settings.shopeeAllChannelAutoCursor = (idx + 1) % channels.length;
+      let queue = Array.isArray(db.settings.shopeeAllChannelAutoQueueV32) ? db.settings.shopeeAllChannelAutoQueueV32.filter(q=>channels.some(ch=>isSameChannelName(ch,q))) : [];
+      if(!queue.length || queue.length !== channels.length){
+        queue = sortAllChannelAutoQueue(channels);
+      }
+      const lastPicked = String(db.settings.shopeeAllChannelLastPicked || "");
+      let picked = queue.shift() || channels[0];
+      // Tránh trường hợp cùng một shop, đặc biệt Gooby Mall, bị lặp liên tục khi còn shop khác trong hàng đợi.
+      if(channels.length > 1 && isSameChannelName(picked, lastPicked) && queue.length){
+        queue.push(picked);
+        picked = queue.shift();
+      }
+      queue.push(picked);
+      db.settings.shopeeAllChannelAutoQueueV32 = queue;
+      db.settings.shopeeAllChannelLastPicked = picked;
+      markAllChannelAutoPicked(picked);
       return [picked];
     }
 
@@ -4067,7 +4136,7 @@
       try{
         const connections = shopeeConnectionMap();
         const connectedChannels = Object.keys(connections || {}).filter(ch=>shopeeConnectionStatusText(connections[ch]) === "Đã kết nối");
-        // V31: manual vẫn đồng bộ đủ tất cả shop, nhưng auto chỉ lấy 1 shop/vòng để tránh Gooby bị nghẽn.
+        // V32: manual vẫn đồng bộ đủ tất cả shop, nhưng auto chỉ lấy 1 shop/vòng để tránh Gooby bị nghẽn.
         // Nếu đang lọc Gooby thì auto ưu tiên Gooby trước, các shop khác giữ dữ liệu đã lưu trước đó.
         const channelsToFetch = pickChannelsForAllChannelSync(connectedChannels, options);
         if(!channelsToFetch.length) throw new Error("Chưa có shop nào đã kết nối Shopee");
@@ -4095,7 +4164,7 @@
         }
 
         const data = {
-          source: options.auto ? "shopee_order_api_all_channel_auto_refresh_v31_selected_shop_priority" : "shopee_order_api_all_channel_v31_gooby_priority_snapshot",
+          source: options.auto ? "shopee_order_api_all_channel_auto_refresh_v32_exact_shop_queue" : "shopee_order_api_all_channel_v32_gooby_exact_priority_snapshot",
           date_from:allChannelDateFrom,
           date_to:allChannelDateTo,
           selectedChannel:allChannelFilter,
