@@ -409,7 +409,7 @@
         <div class="section-head">
           <div>
             <h2>Dữ liệu toàn kênh Shopee</h2>
-            <p>Tổng hợp GMV, đơn hàng, đơn hủy, AOV, top sản phẩm và GMV theo giờ. Có bộ lọc chọn ngày/tháng/khoảng ngày và lưu snapshot để so sánh dữ liệu cũ.</p>
+            <p>Tổng hợp GMV, đơn hàng, đơn hủy, AOV, top sản phẩm và GMV theo giờ. Có bộ lọc chọn ngày/tháng/khoảng ngày, lưu snapshot để so sánh dữ liệu cũ và tách request theo từng shop để tránh giới hạn Worker.</p>
           </div>
           <div class="toolbar">
             <button class="secondary" onclick="openShopeeSettings()">Cấu hình Worker</button>
@@ -3398,7 +3398,7 @@
           <div class="section-head" style="margin-top:0;margin-bottom:12px">
             <div>
               <h2 style="font-size:20px">Chọn thời gian xem dữ liệu Shopee</h2>
-              <p>Chọn tổng tất cả shop hoặc từng kênh bán, sau đó chọn ngày/tháng/khoảng ngày để đồng bộ và lưu lại snapshot so sánh.</p>
+              <p>Chọn shop/kênh bán để lọc hiển thị. Khi bấm đồng bộ, hệ thống vẫn lấy đủ tất cả shop đã kết nối và lưu snapshot đầy đủ để không mất dữ liệu shop khác.</p>
               <p>${sourceText}</p>
               <p class="compare-note">Kỳ hiện tại: <b>${escapeHtml(data.date_from || allChannelDateFrom)} đến ${escapeHtml(data.date_to || allChannelDateTo)}</b> · Kỳ so sánh: <b>${escapeHtml(compareRangeText(view))}</b></p>
               ${data.lastError ? `<p style="color:#b91c1c"><b>Lỗi gần nhất:</b> ${escapeHtml(data.lastError)}</p>` : ""}
@@ -3428,7 +3428,7 @@
             </div>
             <div class="form-field">
               <label>&nbsp;</label>
-              <button class="green" style="width:100%" onclick="syncAllChannelData(false)">Xem dữ liệu & lưu snapshot</button>
+              <button class="green" style="width:100%" onclick="syncAllChannelData(false)">Đồng bộ tất cả shop & lưu snapshot</button>
             </div>
           </div>
           <div class="warning-note" style="margin-top:12px">
@@ -3484,7 +3484,7 @@
                   <td>${escapeHtml(ch.syncedAt || "-")}</td>
                   <td>${ch.lastError ? `<span style="color:#b91c1c">${escapeHtml(ch.lastError)}</span>` : "-"}</td>
                 </tr>
-              `).join("") || `<tr><td colspan="8">Chưa có dữ liệu từng shop. Hãy bấm Xem dữ liệu & lưu snapshot.</td></tr>`}</tbody>
+              `).join("") || `<tr><td colspan="8">Chưa có dữ liệu từng shop. Hãy bấm Đồng bộ tất cả shop & lưu snapshot.</td></tr>`}</tbody>
             </table>
           </div>
         </div>
@@ -3498,18 +3498,117 @@
                 <tr>
                   <td>${escapeHtml(x.lastSyncAt || "-")}</td>
                   <td>${escapeHtml(x.date_from || "-")} → ${escapeHtml(x.date_to || "-")}<br/><span class="meta">${escapeHtml(x.periodMode || "-")}</span></td>
-                  <td>${escapeHtml(x.selectedChannel || "all")}</td>
+                  <td>${escapeHtml(x.selectedChannel || "all")}<br/><span class="meta">Lưu đủ ${Number(x.channelCount || 0)} shop</span></td>
                   <td>${money(x.summary?.gmv || 0)}</td>
                   <td>${Number(x.summary?.totalOrders || 0).toLocaleString("vi-VN")}</td>
                   <td>${money(x.summary?.cancelGmv || 0)}</td>
                   <td>${Number(x.summary?.cancelOrders || 0).toLocaleString("vi-VN")}</td>
                   <td>${money(x.summary?.aov || 0)}</td>
                 </tr>
-              `).join("") || `<tr><td colspan="8">Chưa có snapshot. Bấm Xem dữ liệu & lưu snapshot để bắt đầu lưu dữ liệu.</td></tr>`}</tbody>
+              `).join("") || `<tr><td colspan="8">Chưa có snapshot. Bấm Đồng bộ tất cả shop & lưu snapshot để bắt đầu lưu dữ liệu.</td></tr>`}</tbody>
             </table>
           </div>
         </div>
       `;
+    }
+
+    function previousAllChannelRange(dateFrom, dateTo, periodMode){
+      const from = (dateFrom || todayISO()).slice(0,10);
+      const to = (dateTo || from).slice(0,10);
+      if(periodMode === "month"){
+        const [y,m] = from.slice(0,7).split("-").map(Number);
+        const prevMonth = new Date(y, m-2, 1);
+        const month = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth()+1).padStart(2,"0")}`;
+        return {date_from:monthStartISO(month), date_to:monthEndISO(month)};
+      }
+      const days = dateDiffDays(from, to);
+      const prevTo = dateAddISO(from, -1);
+      const prevFrom = dateAddISO(prevTo, -(days-1));
+      return {date_from:prevFrom, date_to:prevTo};
+    }
+
+    function emptyAllChannelSummary(){
+      return {gmv:0,totalOrders:0,validOrders:0,cancelGmv:0,cancelOrders:0,aov:0};
+    }
+
+    function normalizeAllChannelChannelRow(data, channel, errorMessage=""){
+      const row = Array.isArray(data?.channels) && data.channels[0] ? data.channels[0] : null;
+      if(row) return {...row, channel:row.channel || channel, lastError:errorMessage || row.lastError || ""};
+      const sum = data?.summary || emptyAllChannelSummary();
+      return {
+        channel,
+        shop_id: data?.shop_id || 0,
+        gmv:Number(sum.gmv || 0),
+        totalOrders:Number(sum.totalOrders || 0),
+        validOrders:Number(sum.validOrders || 0),
+        cancelGmv:Number(sum.cancelGmv || 0),
+        cancelOrders:Number(sum.cancelOrders || 0),
+        aov:Number(sum.aov || 0),
+        hourly:Array.isArray(data?.hourly) ? data.hourly : [],
+        topProducts:Array.isArray(data?.topProducts) ? data.topProducts : [],
+        syncedAt:data?.lastSyncAt || nowText(),
+        lastError:errorMessage
+      };
+    }
+
+    function mergeAllChannelClient(channelRows){
+      const summary = emptyAllChannelSummary();
+      const hourlyMap = new Map();
+      const productMap = new Map();
+      for(let h=0; h<24; h++) hourlyMap.set(String(h).padStart(2,"0") + ":00", {hour:String(h).padStart(2,"0") + ":00", gmv:0, orders:0});
+      (channelRows || []).forEach(ch=>{
+        summary.gmv += Number(ch.gmv || 0);
+        summary.totalOrders += Number(ch.totalOrders || 0);
+        summary.validOrders += Number(ch.validOrders || 0);
+        summary.cancelGmv += Number(ch.cancelGmv || 0);
+        summary.cancelOrders += Number(ch.cancelOrders || 0);
+        (ch.hourly || []).forEach(h=>{
+          const key = h.hour || "--:00";
+          if(!hourlyMap.has(key)) hourlyMap.set(key, {hour:key, gmv:0, orders:0});
+          const row = hourlyMap.get(key);
+          row.gmv += Number(h.gmv || 0);
+          row.orders += Number(h.orders || 0);
+        });
+        (ch.topProducts || []).forEach(p=>{
+          const key = [p.item_id || "", p.model_id || "", p.sku || p.model_sku || ""].join("|");
+          if(!productMap.has(key)) productMap.set(key, {...p, qty:0, quantity:0, gmv:0, orders:0});
+          const row = productMap.get(key);
+          row.qty += Number(p.qty || p.quantity || 0);
+          row.quantity = row.qty;
+          row.gmv += Number(p.gmv || 0);
+          row.orders += Number(p.orders || 0);
+        });
+      });
+      summary.aov = summary.validOrders ? Math.round(summary.gmv / summary.validOrders) : 0;
+      return {
+        summary,
+        hourly:[...hourlyMap.values()].sort((a,b)=>String(a.hour).localeCompare(String(b.hour))).map(h=>({hour:h.hour, gmv:Math.round(h.gmv), orders:h.orders})),
+        topProducts:[...productMap.values()].sort((a,b)=>Number(b.gmv||0)-Number(a.gmv||0)).slice(0,50).map(p=>({...p, gmv:Math.round(p.gmv||0)}))
+      };
+    }
+
+    async function fetchAllChannelSingleRange(endpoint, channel, dateFrom, dateTo){
+      const url = `${endpoint}/api/shopee/all-channel-data?channel=${encodeURIComponent(channel)}&date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}&period=${encodeURIComponent(allChannelPeriodMode)}&compare=none&save=0`;
+      const res = await fetch(url, {method:"GET", headers:{"Accept":"application/json"}});
+      const payload = await res.json().catch(()=>null);
+      if(!res.ok || !payload || payload.error) throw new Error(payload?.error || `HTTP ${res.status}`);
+      return payload.data || payload;
+    }
+
+    async function fetchAllChannelRangeSplit(endpoint, channels, dateFrom, dateTo){
+      const rows = [];
+      const errors = [];
+      for(const ch of channels){
+        try{
+          const data = await fetchAllChannelSingleRange(endpoint, ch, dateFrom, dateTo);
+          rows.push(normalizeAllChannelChannelRow(data, ch));
+        }catch(e){
+          rows.push(normalizeAllChannelChannelRow(null, ch, e.message));
+          errors.push(`${ch}: ${e.message}`);
+        }
+      }
+      const merged = mergeAllChannelClient(rows);
+      return {rows, merged, errors};
     }
 
     async function syncAllChannelData(silent=true){
@@ -3518,21 +3617,91 @@
       const endpoint = getShopeeSyncEndpoint();
       if(!endpoint){ openShopeeSettings(); return; }
       try{
-        const url = `${endpoint}/api/shopee/all-channel-data?channel=${encodeURIComponent(allChannelFilter)}&date_from=${encodeURIComponent(allChannelDateFrom)}&date_to=${encodeURIComponent(allChannelDateTo)}&period=${encodeURIComponent(allChannelPeriodMode)}&compare=${encodeURIComponent(allChannelCompareMode)}`;
-        const res = await fetch(url, {method:"GET", headers:{"Accept":"application/json"}});
-        const payload = await res.json().catch(()=>null);
-        if(!res.ok || !payload || payload.error) throw new Error(payload?.error || `HTTP ${res.status}`);
-        if(!db.settings) db.settings = {};
-        db.settings.shopeeAllChannelData = payload.data || payload;
-        if(Array.isArray(payload.snapshots)) db.settings.shopeeAllChannelSnapshots = payload.snapshots;
-        else if(payload.data?.snapshot){
-          if(!Array.isArray(db.settings.shopeeAllChannelSnapshots)) db.settings.shopeeAllChannelSnapshots = [];
-          db.settings.shopeeAllChannelSnapshots.unshift(payload.data.snapshot);
-          db.settings.shopeeAllChannelSnapshots = db.settings.shopeeAllChannelSnapshots.slice(0,400);
+        const connections = shopeeConnectionMap();
+        const connectedChannels = Object.keys(connections || {}).filter(ch=>shopeeConnectionStatusText(connections[ch]) === "Đã kết nối");
+        // V24: luôn đồng bộ TẤT CẢ shop đã kết nối, bất kể dropdown đang lọc shop nào.
+        // Dropdown shop chỉ dùng để hiển thị/lọc số liệu sau khi đã lấy đủ dữ liệu.
+        // Cách này tránh lỗi chọn Gooby thì dữ liệu Rouya/Gooby Mall/Lazy Mom bị ghi đè mất khỏi kho dashboard.
+        const channelsToFetch = connectedChannels;
+        if(!channelsToFetch.length) throw new Error("Chưa có shop nào đã kết nối Shopee");
+
+        // V24: vẫn chia nhỏ request theo từng shop và tách kỳ hiện tại/kỳ so sánh thành các Worker invocation riêng.
+        // Cách này tránh lỗi Cloudflare: Too many subrequests by single Worker invocation.
+        const currentPart = await fetchAllChannelRangeSplit(endpoint, channelsToFetch, allChannelDateFrom, allChannelDateTo);
+        let comparisonData = null;
+        if(allChannelCompareMode !== "none"){
+          const prev = previousAllChannelRange(allChannelDateFrom, allChannelDateTo, allChannelPeriodMode);
+          const prevPart = await fetchAllChannelRangeSplit(endpoint, channelsToFetch, prev.date_from, prev.date_to);
+          comparisonData = {
+            source:"client_split_compare",
+            date_from:prev.date_from,
+            date_to:prev.date_to,
+            selectedChannel:allChannelFilter,
+            summary:prevPart.merged.summary,
+            channels:prevPart.rows,
+            hourly:prevPart.merged.hourly,
+            topProducts:prevPart.merged.topProducts,
+            lastSyncAt:nowText(),
+            lastError:prevPart.errors.join(" | ")
+          };
+          currentPart.errors.push(...prevPart.errors.map(x=>`Kỳ so sánh ${x}`));
         }
+
+        const data = {
+          source:"shopee_order_api_all_channel_client_split_v24_full_snapshot",
+          date_from:allChannelDateFrom,
+          date_to:allChannelDateTo,
+          selectedChannel:allChannelFilter,
+          periodMode:allChannelPeriodMode,
+          compareMode:allChannelCompareMode,
+          summary:currentPart.merged.summary,
+          channels:currentPart.rows,
+          hourly:currentPart.merged.hourly,
+          topProducts:currentPart.merged.topProducts,
+          comparison:comparisonData,
+          lastSyncAt:nowText(),
+          lastSyncAtTs:Date.now(),
+          lastError:currentPart.errors.join(" | ")
+        };
+        data.snapshot = {
+          id:`snapshot_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+          source:data.source,
+          periodMode:data.periodMode,
+          compareMode:data.compareMode,
+          // selectedChannel là bộ lọc đang xem, nhưng snapshot luôn lưu đủ allChannels bên dưới.
+          selectedChannel:data.selectedChannel,
+          date_from:data.date_from,
+          date_to:data.date_to,
+          summary:data.summary,
+          channelCount:(data.channels || []).length,
+          channels:(data.channels || []).map(ch=>({
+            channel:ch.channel,
+            shop_id:ch.shop_id || 0,
+            gmv:Number(ch.gmv || 0),
+            totalOrders:Number(ch.totalOrders || 0),
+            validOrders:Number(ch.validOrders || 0),
+            cancelGmv:Number(ch.cancelGmv || 0),
+            cancelOrders:Number(ch.cancelOrders || 0),
+            aov:Number(ch.aov || 0),
+            hourly:Array.isArray(ch.hourly) ? ch.hourly : [],
+            topProducts:Array.isArray(ch.topProducts) ? ch.topProducts.slice(0,20) : [],
+            syncedAt:ch.syncedAt || data.lastSyncAt || "",
+            lastError:ch.lastError || ""
+          })),
+          hourly:Array.isArray(data.hourly) ? data.hourly : [],
+          topProducts:Array.isArray(data.topProducts) ? data.topProducts.slice(0,50) : [],
+          lastSyncAt:data.lastSyncAt,
+          lastSyncAtTs:data.lastSyncAtTs
+        };
+
+        if(!db.settings) db.settings = {};
+        db.settings.shopeeAllChannelData = data;
+        if(!Array.isArray(db.settings.shopeeAllChannelSnapshots)) db.settings.shopeeAllChannelSnapshots = [];
+        db.settings.shopeeAllChannelSnapshots.unshift(data.snapshot);
+        db.settings.shopeeAllChannelSnapshots = db.settings.shopeeAllChannelSnapshots.slice(0,250);
         await saveDB({immediate:true});
         renderAllChannelDataDashboard();
-        if(!silent) toast("Đã đồng bộ và lưu snapshot dữ liệu toàn kênh Shopee");
+        if(!silent) toast(data.lastError ? "Đã lưu dữ liệu, nhưng có một số shop bị lỗi" : "Đã đồng bộ và lưu snapshot dữ liệu toàn kênh Shopee");
       }catch(e){
         if(!db.settings) db.settings = {};
         if(!db.settings.shopeeAllChannelData) db.settings.shopeeAllChannelData = {};
