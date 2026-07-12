@@ -763,7 +763,10 @@
     const SHOPEE_AUTO_SYNC_INTERVAL_MS = 60000; // tự động đồng bộ live shift mỗi 60 giây khi dashboard đang mở
     const ALL_CHANNEL_AUTO_SYNC_INTERVAL_MS = 120000; // tự động cập nhật dữ liệu toàn kênh mỗi 2 phút khi dashboard đang mở
     const ALL_CHANNEL_AUTO_SNAPSHOT_GAP_MS = 10 * 60 * 1000; // tự lưu snapshot định kỳ, tránh lưu quá dày
-    const ALL_CHANNEL_FETCH_TIMEOUT_MS = 28000; // V30: tránh treo khi Worker/Shopee trả chậm
+    const ALL_CHANNEL_FETCH_TIMEOUT_MS = 28000; // V31: tránh treo khi Worker/Shopee trả chậm
+    const ALL_CHANNEL_HEAVY_SHOP_RE = /gooby/i;
+    const ALL_CHANNEL_HEAVY_SHOP_CHUNK_MINUTES = 30;
+    const ALL_CHANNEL_HEAVY_SHOP_RETRY_MINUTES = 15;
     let shopeeAutoSyncTimer = null;
     let shopeeAutoSyncRunning = false;
     let lastShopeeAutoSyncText = "Chưa đồng bộ";
@@ -3531,7 +3534,7 @@
             </div>
           </div>
           <div class="warning-note" style="margin-top:12px">
-            Ví dụ: chọn <b>Theo ngày</b> để xem lại 1 ngày, chọn <b>Theo tháng</b> để xem tổng cả tháng, hoặc chọn <b>Khoảng ngày</b> để xem giai đoạn tùy ý. V30: Đồng bộ không chặn giao diện, tự chia nhỏ theo giờ và có timeout để tránh treo. Ngày hôm nay tự cập nhật gần realtime; ngày/tháng cũ cộng từ snapshot đã lưu để giảm lệch và tránh quá tải Worker.
+            Ví dụ: chọn <b>Theo ngày</b> để xem lại 1 ngày, chọn <b>Theo tháng</b> để xem tổng cả tháng, hoặc chọn <b>Khoảng ngày</b> để xem giai đoạn tùy ý. V31: Ưu tiên kênh đang xem, auto chỉ cập nhật từng shop để tránh Gooby bị delay; bấm đồng bộ thủ công vẫn lấy đủ tất cả shop. Ngày hôm nay tự cập nhật gần realtime; ngày/tháng cũ cộng từ snapshot đã lưu để giảm lệch và tránh quá tải Worker.
           </div>
         </div>
 
@@ -3731,6 +3734,29 @@
       return chunks;
     }
 
+    function allChannelMinuteChunks(dateFrom, dateTo, minutesPerChunk=30){
+      const chunks = [];
+      const from = String(dateFrom || todayISO()).slice(0,10);
+      const to = String(dateTo || from).slice(0,10);
+      let cur = from;
+      let guard = 0;
+      const step = Math.max(5, Number(minutesPerChunk || 30));
+      while(cur <= to && guard < 400){
+        guard++;
+        for(let start=0; start<24*60; start+=step){
+          const end = Math.min(24*60, start + step);
+          const sh = Math.floor(start/60), sm = start % 60;
+          const eh = Math.floor(end/60), em = end % 60;
+          const time_from = vnDateTimeSeconds(cur, sh, sm, 0);
+          const time_to = end >= 24*60 ? vnDateTimeSeconds(cur, 23, 59, 59) : (vnDateTimeSeconds(cur, eh, em, 0) - 1);
+          const labelEnd = end >= 24*60 ? '24:00' : `${String(eh).padStart(2,'0')}:${String(em).padStart(2,'0')}`;
+          chunks.push({date_from:cur, date_to:cur, time_from, time_to, startMinute:start, endMinute:end, label:`${cur} ${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')}-${labelEnd}`});
+        }
+        cur = dateAddISO(cur, 1);
+      }
+      return chunks;
+    }
+
     function combineRowsForChannel(channel, rows, dateFrom, dateTo, errors=[]){
       const merged = mergeAllChannelClient(rows || []);
       const sum = merged.summary || emptyAllChannelSummary();
@@ -3754,11 +3780,15 @@
     }
 
     async function fetchAllChannelOneShopSafe(endpoint, channel, dateFrom, dateTo){
-      // V30: không gọi nguyên cả ngày/kỳ trước cho shop nhiều đơn như Gooby nữa.
-      // Gọi thẳng theo block 3 giờ; block nào nặng sẽ tự fallback từng giờ. Cách này chậm hơn một chút nhưng ổn định hơn và tránh treo.
+      // V31: shop nhiều đơn như Gooby dùng block 30 phút, lỗi thì rơi xuống 15 phút.
+      // Các shop nhẹ vẫn dùng block 3 giờ để nhanh. Cách này giảm thiếu đơn/delay cho Gooby.
       const rows = [];
       const errors = [];
-      const chunks = allChannelTimeChunks(dateFrom, dateTo, 3);
+      const isHeavy = ALL_CHANNEL_HEAVY_SHOP_RE.test(String(channel || ""));
+      const chunks = isHeavy
+        ? allChannelMinuteChunks(dateFrom, dateTo, ALL_CHANNEL_HEAVY_SHOP_CHUNK_MINUTES)
+        : allChannelTimeChunks(dateFrom, dateTo, 3);
+
       for(const chunk of chunks){
         try{
           const data = await fetchAllChannelSingleRange(endpoint, channel, chunk.date_from, chunk.date_to, chunk.time_from, chunk.time_to);
@@ -3766,25 +3796,47 @@
         }catch(errChunk){
           errors.push(`${chunk.label}: ${errChunk.message}`);
           const day = chunk.date_from;
-          const startHour = Number(String(chunk.label).match(/ (\d{2}):/)?.[1] || 0);
-          for(let h=startHour; h<Math.min(24, startHour+3); h++){
-            const tf = vnDateTimeSeconds(day, h, 0, 0);
-            const tt = h >= 23 ? vnDateTimeSeconds(day, 23, 59, 59) : vnDateTimeSeconds(day, h+1, 0, 0) - 1;
-            try{
-              const data1 = await fetchAllChannelSingleRange(endpoint, channel, day, day, tf, tt);
-              rows.push(normalizeAllChannelChannelRow(data1, channel));
-            }catch(err1){
-              errors.push(`${day} ${String(h).padStart(2,"0")}:00: ${err1.message}`);
+          if(isHeavy){
+            // Gooby: chia tiếp 30 phút -> 15 phút để giảm timeout/giới hạn Worker.
+            const retryStep = ALL_CHANNEL_HEAVY_SHOP_RETRY_MINUTES;
+            for(let m=Number(chunk.startMinute || 0); m<Number(chunk.endMinute || 0); m+=retryStep){
+              const end = Math.min(Number(chunk.endMinute || 0), m + retryStep);
+              const sh = Math.floor(m/60), sm = m%60;
+              const eh = Math.floor(end/60), em = end%60;
+              const tf = vnDateTimeSeconds(day, sh, sm, 0);
+              const tt = end >= 24*60 ? vnDateTimeSeconds(day, 23, 59, 59) : vnDateTimeSeconds(day, eh, em, 0) - 1;
+              try{
+                const data1 = await fetchAllChannelSingleRange(endpoint, channel, day, day, tf, tt);
+                rows.push(normalizeAllChannelChannelRow(data1, channel));
+              }catch(err1){
+                errors.push(`${day} ${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')}: ${err1.message}`);
+              }
+              lastAllChannelAutoSyncText = `${nowText()} · đang lấy ${channel} ${day} ${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')}`;
+              updateAllChannelAutoStatusOnly();
+              await new Promise(r=>setTimeout(r, 80));
+            }
+          }else{
+            // Shop thường: fallback 3 giờ -> từng giờ.
+            const startHour = Number(String(chunk.label).match(/ (\d{2}):/)?.[1] || 0);
+            for(let h=startHour; h<Math.min(24, startHour+3); h++){
+              const tf = vnDateTimeSeconds(day, h, 0, 0);
+              const tt = h >= 23 ? vnDateTimeSeconds(day, 23, 59, 59) : vnDateTimeSeconds(day, h+1, 0, 0) - 1;
+              try{
+                const data1 = await fetchAllChannelSingleRange(endpoint, channel, day, day, tf, tt);
+                rows.push(normalizeAllChannelChannelRow(data1, channel));
+              }catch(err1){
+                errors.push(`${day} ${String(h).padStart(2,"0")}:00: ${err1.message}`);
+              }
             }
           }
         }
-        // Cập nhật trạng thái nhẹ để người dùng biết vẫn đang chạy, không tưởng là đứng.
         lastAllChannelAutoSyncText = `${nowText()} · đang lấy ${channel} ${chunk.label}`;
         updateAllChannelAutoStatusOnly();
-        await new Promise(r=>setTimeout(r, 120));
+        await new Promise(r=>setTimeout(r, isHeavy ? 180 : 120));
       }
       if(rows.length){
         const combined = combineRowsForChannel(channel, rows, dateFrom, dateTo, errors);
+        combined.syncMode = isHeavy ? "heavy_shop_30m_retry_15m" : "normal_3h_retry_1h";
         return combined;
       }
       return normalizeAllChannelChannelRow(null, channel, errors.join(" | "));
@@ -3976,6 +4028,37 @@
       return {rows, merged, errors, dayParts};
     }
 
+    function pickChannelsForAllChannelSync(connectedChannels, options={}){
+      const channels = Array.isArray(connectedChannels) ? connectedChannels.slice() : [];
+      if(!channels.length) return [];
+      const selected = String(allChannelFilter || "all");
+      // Manual button luôn đồng bộ toàn bộ shop, nhưng ưu tiên shop đang xem trước để số liệu shop đó lên nhanh.
+      if(!options.auto){
+        if(selected !== "all" && channels.includes(selected)) return [selected, ...channels.filter(ch=>ch!==selected)];
+        if(channels.includes("Gooby")) return ["Gooby", ...channels.filter(ch=>ch!=="Gooby")];
+        return channels;
+      }
+      // Auto refresh: chỉ cập nhật 1 shop mỗi vòng để không kéo Gooby + các shop khác cùng lúc.
+      // Nếu bạn đang xem Gooby, auto ưu tiên Gooby, dữ liệu shop khác giữ từ snapshot/lần sync trước.
+      if(selected !== "all" && channels.includes(selected)) return [selected];
+      const cursor = Number(db?.settings?.shopeeAllChannelAutoCursor || 0);
+      const idx = ((cursor % channels.length) + channels.length) % channels.length;
+      const picked = channels[idx];
+      if(!db.settings) db.settings = {};
+      db.settings.shopeeAllChannelAutoCursor = (idx + 1) % channels.length;
+      return [picked];
+    }
+
+    function mergePartialAllChannelRows(fetchedRows, connectedChannels){
+      const existing = Array.isArray(db?.settings?.shopeeAllChannelData?.channels) ? db.settings.shopeeAllChannelData.channels : [];
+      const map = new Map(existing.map(r=>[String(r.channel || ""), r]));
+      (fetchedRows || []).forEach(r=>{ if(r && r.channel) map.set(String(r.channel), r); });
+      return (connectedChannels || []).map(ch=> map.get(ch) || {
+        channel:ch, shop_id:0, gmv:0,totalOrders:0,validOrders:0,cancelGmv:0,cancelOrders:0,aov:0,
+        hourly:[], topProducts:[], syncedAt:"", lastError:"Chưa đồng bộ trong phiên hiện tại"
+      });
+    }
+
     async function syncAllChannelData(silent=true, options={}){
       if(!isAdmin()) return;
       applyAllChannelPeriodDates();
@@ -3984,16 +4067,23 @@
       try{
         const connections = shopeeConnectionMap();
         const connectedChannels = Object.keys(connections || {}).filter(ch=>shopeeConnectionStatusText(connections[ch]) === "Đã kết nối");
-        // V26: luôn đồng bộ TẤT CẢ shop đã kết nối, bất kể dropdown đang lọc shop nào.
-        // Dropdown shop chỉ dùng để hiển thị/lọc số liệu sau khi đã lấy đủ dữ liệu.
-        // Cách này tránh lỗi chọn Gooby thì dữ liệu Rouya/Gooby Mall/Lazy Mom bị ghi đè mất khỏi kho dashboard.
-        const channelsToFetch = connectedChannels;
+        // V31: manual vẫn đồng bộ đủ tất cả shop, nhưng auto chỉ lấy 1 shop/vòng để tránh Gooby bị nghẽn.
+        // Nếu đang lọc Gooby thì auto ưu tiên Gooby trước, các shop khác giữ dữ liệu đã lưu trước đó.
+        const channelsToFetch = pickChannelsForAllChannelSync(connectedChannels, options);
         if(!channelsToFetch.length) throw new Error("Chưa có shop nào đã kết nối Shopee");
 
         // V29: đồng bộ dạng ledger theo ngày.
         // Ngày hôm nay lấy mới từ Shopee để realtime; ngày cũ ưu tiên snapshot đã lưu để tránh gọi lại Shopee gây lệch/timeout.
         // Tháng/khoảng ngày được cộng từ snapshot theo từng ngày, không gọi một request khổng lồ nữa.
         const currentPart = await fetchAllChannelPeriodLedger(endpoint, channelsToFetch, allChannelDateFrom, allChannelDateTo, allChannelPeriodMode);
+        const finalRows = (options.auto && channelsToFetch.length < connectedChannels.length)
+          ? mergePartialAllChannelRows(currentPart.rows, connectedChannels)
+          : currentPart.rows;
+        const finalMerged = mergeAllChannelClient(finalRows);
+        if(options.auto && channelsToFetch.length < connectedChannels.length){
+          currentPart.errors = currentPart.errors || [];
+          currentPart.errors.push(`Auto chỉ cập nhật ${channelsToFetch.join(", ")}; các shop khác giữ dữ liệu đã lưu để tránh nghẽn Gooby/giới hạn Worker.`);
+        }
         let comparisonData = null;
         if(allChannelCompareMode !== "none"){
           const prev = previousAllChannelRange(allChannelDateFrom, allChannelDateTo, allChannelPeriodMode);
@@ -4005,17 +4095,17 @@
         }
 
         const data = {
-          source: options.auto ? "shopee_order_api_all_channel_auto_refresh_v30_nonblocking" : "shopee_order_api_all_channel_v30_nonblocking_snapshot",
+          source: options.auto ? "shopee_order_api_all_channel_auto_refresh_v31_selected_shop_priority" : "shopee_order_api_all_channel_v31_gooby_priority_snapshot",
           date_from:allChannelDateFrom,
           date_to:allChannelDateTo,
           selectedChannel:allChannelFilter,
           periodMode:allChannelPeriodMode,
           compareMode:allChannelCompareMode,
           metricBasis:allChannelMetricBasis || "create_time",
-          summary:currentPart.merged.summary,
-          channels:currentPart.rows,
-          hourly:currentPart.merged.hourly,
-          topProducts:currentPart.merged.topProducts,
+          summary:finalMerged.summary,
+          channels:finalRows,
+          hourly:finalMerged.hourly,
+          topProducts:finalMerged.topProducts,
           comparison:comparisonData,
           lastSyncAt:nowText(),
           lastSyncAtTs:Date.now(),
