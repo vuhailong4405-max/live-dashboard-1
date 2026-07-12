@@ -3587,25 +3587,113 @@
       };
     }
 
-    async function fetchAllChannelSingleRange(endpoint, channel, dateFrom, dateTo){
-      const url = `${endpoint}/api/shopee/all-channel-data?channel=${encodeURIComponent(channel)}&date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}&period=${encodeURIComponent(allChannelPeriodMode)}&compare=none&save=0`;
+    async function fetchAllChannelSingleRange(endpoint, channel, dateFrom, dateTo, timeFromSec=0, timeToSec=0){
+      let url = `${endpoint}/api/shopee/all-channel-data?channel=${encodeURIComponent(channel)}&date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}&period=${encodeURIComponent(allChannelPeriodMode)}&compare=none&save=0`;
+      if(timeFromSec && timeToSec && Number(timeToSec) > Number(timeFromSec)){
+        url += `&time_from=${encodeURIComponent(timeFromSec)}&time_to=${encodeURIComponent(timeToSec)}`;
+      }
       const res = await fetch(url, {method:"GET", headers:{"Accept":"application/json"}});
       const payload = await res.json().catch(()=>null);
       if(!res.ok || !payload || payload.error) throw new Error(payload?.error || `HTTP ${res.status}`);
       return payload.data || payload;
     }
 
+    function vnDateTimeSeconds(date, h=0, m=0, sec=0){
+      const ms = Date.parse(`${String(date || todayISO()).slice(0,10)}T${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}+07:00`);
+      return Number.isFinite(ms) ? Math.floor(ms/1000) : 0;
+    }
+
+    function allChannelTimeChunks(dateFrom, dateTo, hoursPerChunk=6){
+      const chunks = [];
+      const from = String(dateFrom || todayISO()).slice(0,10);
+      const to = String(dateTo || from).slice(0,10);
+      let cur = from;
+      let guard = 0;
+      while(cur <= to && guard < 400){
+        guard++;
+        for(let h=0; h<24; h+=hoursPerChunk){
+          const endHour = Math.min(24, h + hoursPerChunk);
+          const time_from = vnDateTimeSeconds(cur, h, 0, 0);
+          const time_to = endHour >= 24 ? vnDateTimeSeconds(cur, 23, 59, 59) : (vnDateTimeSeconds(cur, endHour, 0, 0) - 1);
+          chunks.push({date_from:cur, date_to:cur, time_from, time_to, label:`${cur} ${String(h).padStart(2,"0")}:00-${String(endHour).padStart(2,"0")}:00`});
+        }
+        cur = dateAddISO(cur, 1);
+      }
+      return chunks;
+    }
+
+    function combineRowsForChannel(channel, rows, dateFrom, dateTo, errors=[]){
+      const merged = mergeAllChannelClient(rows || []);
+      const sum = merged.summary || emptyAllChannelSummary();
+      const first = (rows || []).find(Boolean) || {};
+      return {
+        channel,
+        shop_id:first.shop_id || 0,
+        gmv:Number(sum.gmv || 0),
+        totalOrders:Number(sum.totalOrders || 0),
+        validOrders:Number(sum.validOrders || 0),
+        cancelGmv:Number(sum.cancelGmv || 0),
+        cancelOrders:Number(sum.cancelOrders || 0),
+        aov:Number(sum.aov || 0),
+        hourly:merged.hourly || [],
+        topProducts:merged.topProducts || [],
+        syncedAt:nowText(),
+        date_from:dateFrom,
+        date_to:dateTo,
+        lastError:errors.join(" | ")
+      };
+    }
+
+    async function fetchAllChannelOneShopSafe(endpoint, channel, dateFrom, dateTo){
+      // V25: thử lấy nguyên kỳ trước. Nếu Worker/Cloudflare/Shopee bị quá tải request,
+      // tự chia nhỏ theo 6 giờ, nếu vẫn lỗi thì chia tiếp từng giờ. Dữ liệu các shop khác không bị mất.
+      try{
+        const data = await fetchAllChannelSingleRange(endpoint, channel, dateFrom, dateTo);
+        return normalizeAllChannelChannelRow(data, channel);
+      }catch(dayErr){
+        const rows = [];
+        const errors = [`nguyên kỳ: ${dayErr.message}`];
+        for(const chunk6 of allChannelTimeChunks(dateFrom, dateTo, 6)){
+          try{
+            const data6 = await fetchAllChannelSingleRange(endpoint, channel, chunk6.date_from, chunk6.date_to, chunk6.time_from, chunk6.time_to);
+            rows.push(normalizeAllChannelChannelRow(data6, channel));
+          }catch(err6){
+            errors.push(`${chunk6.label}: ${err6.message}`);
+            // fallback nhỏ nhất: 1 giờ
+            const hourChunks = [];
+            const startHour = Number(String(chunk6.label).match(/ (\d{2}):/)?.[1] || 0);
+            const day = chunk6.date_from;
+            for(let h=startHour; h<Math.min(24, startHour+6); h++){
+              const tf = vnDateTimeSeconds(day, h, 0, 0);
+              const tt = h >= 23 ? vnDateTimeSeconds(day, 23, 59, 59) : vnDateTimeSeconds(day, h+1, 0, 0) - 1;
+              hourChunks.push({date_from:day,date_to:day,time_from:tf,time_to:tt,label:`${day} ${String(h).padStart(2,"0")}:00`});
+            }
+            for(const ch1 of hourChunks){
+              try{
+                const data1 = await fetchAllChannelSingleRange(endpoint, channel, ch1.date_from, ch1.date_to, ch1.time_from, ch1.time_to);
+                rows.push(normalizeAllChannelChannelRow(data1, channel));
+              }catch(err1){
+                errors.push(`${ch1.label}: ${err1.message}`);
+              }
+            }
+          }
+        }
+        if(rows.length){
+          const combined = combineRowsForChannel(channel, rows, dateFrom, dateTo, errors);
+          // Nếu đã có một phần dữ liệu thì vẫn lưu lại, lỗi để cảnh báo.
+          return combined;
+        }
+        return normalizeAllChannelChannelRow(null, channel, errors.join(" | "));
+      }
+    }
+
     async function fetchAllChannelRangeSplit(endpoint, channels, dateFrom, dateTo){
       const rows = [];
       const errors = [];
       for(const ch of channels){
-        try{
-          const data = await fetchAllChannelSingleRange(endpoint, ch, dateFrom, dateTo);
-          rows.push(normalizeAllChannelChannelRow(data, ch));
-        }catch(e){
-          rows.push(normalizeAllChannelChannelRow(null, ch, e.message));
-          errors.push(`${ch}: ${e.message}`);
-        }
+        const row = await fetchAllChannelOneShopSafe(endpoint, ch, dateFrom, dateTo);
+        rows.push(row);
+        if(row.lastError) errors.push(`${ch}: ${row.lastError}`);
       }
       const merged = mergeAllChannelClient(rows);
       return {rows, merged, errors};
@@ -3619,14 +3707,14 @@
       try{
         const connections = shopeeConnectionMap();
         const connectedChannels = Object.keys(connections || {}).filter(ch=>shopeeConnectionStatusText(connections[ch]) === "Đã kết nối");
-        // V24: luôn đồng bộ TẤT CẢ shop đã kết nối, bất kể dropdown đang lọc shop nào.
+        // V25: luôn đồng bộ TẤT CẢ shop đã kết nối, bất kể dropdown đang lọc shop nào.
         // Dropdown shop chỉ dùng để hiển thị/lọc số liệu sau khi đã lấy đủ dữ liệu.
         // Cách này tránh lỗi chọn Gooby thì dữ liệu Rouya/Gooby Mall/Lazy Mom bị ghi đè mất khỏi kho dashboard.
         const channelsToFetch = connectedChannels;
         if(!channelsToFetch.length) throw new Error("Chưa có shop nào đã kết nối Shopee");
 
-        // V24: vẫn chia nhỏ request theo từng shop và tách kỳ hiện tại/kỳ so sánh thành các Worker invocation riêng.
-        // Cách này tránh lỗi Cloudflare: Too many subrequests by single Worker invocation.
+        // V25: chia nhỏ request theo từng shop; nếu 1 shop quá nhiều đơn sẽ tự chia tiếp theo 6 giờ/1 giờ.
+        // Cách này tránh lỗi Cloudflare: Too many subrequests và tránh mất dữ liệu shop khác khi một shop lỗi.
         const currentPart = await fetchAllChannelRangeSplit(endpoint, channelsToFetch, allChannelDateFrom, allChannelDateTo);
         let comparisonData = null;
         if(allChannelCompareMode !== "none"){
@@ -3648,7 +3736,7 @@
         }
 
         const data = {
-          source:"shopee_order_api_all_channel_client_split_v24_full_snapshot",
+          source:"shopee_order_api_all_channel_client_split_v25_safe_chunks_full_snapshot",
           date_from:allChannelDateFrom,
           date_to:allChannelDateTo,
           selectedChannel:allChannelFilter,
