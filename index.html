@@ -784,7 +784,7 @@
     let allChannelPeriodMode = "day";
     let allChannelCompareMode = "previous";
     let allChannelMonth = todayISO().slice(0,7);
-    let allChannelMetricBasis = "create_time"; // V33: cố định đối soát theo thời gian tạo đơn
+    let allChannelMetricBasis = "create_time"; // V34: cố định đối soát theo thời gian tạo đơn
 
     function isAllChannelControlActive(){
       const wrap = document.getElementById("allChannelDataWrap");
@@ -3221,7 +3221,8 @@
         const connectedAt = conn?.connectedAt || conn?.updatedAt || "-";
         const expireAt = conn?.expire_at ? new Date(Number(conn.expire_at) * 1000).toLocaleString("vi-VN") : "-";
         const lastSync = conn?.lastSyncAt || "-";
-        const lastError = conn?.lastError ? `<div class="meta" style="color:#991b1b;margin-top:4px">${conn.lastError}</div>` : "";
+        const cleanedConnError = cleanStaleErrorText(conn?.lastError);
+        const lastError = cleanedConnError ? `<div class="meta" style="color:#991b1b;margin-top:4px">${cleanedConnError}</div>` : "";
         return `<tr>
           <td><strong>${ch}</strong></td>
           <td>${shopeeConnectionBadge(conn)}${lastError}</td>
@@ -3300,12 +3301,34 @@
     }
 
 
+
+    function isStaleUpdatedSNsError(v){ return String(v || "").includes("updatedSNs is not defined"); }
+    function cleanStaleErrorText(v){ return isStaleUpdatedSNsError(v) ? "" : String(v || ""); }
+    function cleanAllChannelRowsForView(rows){
+      if(!Array.isArray(rows)) return [];
+      const map = new Map();
+      rows.forEach(raw=>{
+        if(!raw || typeof raw !== "object") return;
+        const row = {...raw};
+        row.lastError = cleanStaleErrorText(row.lastError);
+        const key = String(row.channel || row.shop_id || Math.random());
+        const prev = map.get(key);
+        if(!prev){ map.set(key,row); return; }
+        const score = (row.lastError ? 0 : 1000000000) + Number(row.gmv||0) + Number(row.totalOrders||0)*1000000;
+        const prevScore = (prev.lastError ? 0 : 1000000000) + Number(prev.gmv||0) + Number(prev.totalOrders||0)*1000000;
+        if(score >= prevScore) map.set(key,row);
+      });
+      return [...map.values()];
+    }
+
     function getAllChannelData(){
       if(!db.settings || typeof db.settings !== "object") db.settings = {};
       if(!db.settings.shopeeAllChannelData || typeof db.settings.shopeeAllChannelData !== "object"){
         db.settings.shopeeAllChannelData = {summary:{}, channels:[], hourly:[], topProducts:[], comparison:null, deltas:{}, lastSyncAt:"", lastError:""};
       }
       if(!Array.isArray(db.settings.shopeeAllChannelSnapshots)) db.settings.shopeeAllChannelSnapshots = [];
+      if(isStaleUpdatedSNsError(db.settings.shopeeAllChannelData.lastError)) db.settings.shopeeAllChannelData.lastError = "";
+      db.settings.shopeeAllChannelData.channels = cleanAllChannelRowsForView(db.settings.shopeeAllChannelData.channels);
       return db.settings.shopeeAllChannelData;
     }
 
@@ -3534,7 +3557,7 @@
             </div>
           </div>
           <div class="warning-note" style="margin-top:12px">
-            Ví dụ: chọn <b>Theo ngày</b> để xem lại 1 ngày, chọn <b>Theo tháng</b> để xem tổng cả tháng, hoặc chọn <b>Khoảng ngày</b> để xem giai đoạn tùy ý. V32: Sửa lỗi Gooby Mall bị lặp và Gooby không cập nhật. Auto ưu tiên đúng shop đang chọn theo tên chính xác, Gooby Mall không còn bị nhận nhầm là Gooby. Ngày hôm nay tự cập nhật gần realtime; ngày/tháng cũ cộng từ snapshot đã lưu để giảm lệch và tránh quá tải Worker.
+            Ví dụ: chọn <b>Theo ngày</b> để xem lại 1 ngày, chọn <b>Theo tháng</b> để xem tổng cả tháng, hoặc chọn <b>Khoảng ngày</b> để xem giai đoạn tùy ý. V34: làm sạch lỗi cũ updatedSNs, chống hiển thị duplicate shop và thêm endpoint kiểm tra phiên bản Worker. Auto ưu tiên đúng shop đang chọn theo tên chính xác, Gooby Mall không còn bị nhận nhầm là Gooby. Ngày hôm nay tự cập nhật gần realtime; ngày/tháng cũ cộng từ snapshot đã lưu để giảm lệch và tránh quá tải Worker.
           </div>
         </div>
 
