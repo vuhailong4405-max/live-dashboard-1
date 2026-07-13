@@ -784,7 +784,7 @@
     let allChannelPeriodMode = "day";
     let allChannelCompareMode = "previous";
     let allChannelMonth = todayISO().slice(0,7);
-    let allChannelMetricBasis = "create_time";
+    let allChannelMetricBasis = "create_time"; // V33: cố định đối soát theo thời gian tạo đơn
 
     function isAllChannelControlActive(){
       const wrap = document.getElementById("allChannelDataWrap");
@@ -3347,7 +3347,7 @@
     }
 
     function setAllChannelMetricBasis(value){
-      allChannelMetricBasis = value || "create_time";
+      allChannelMetricBasis = "create_time";
       renderAllChannelDataDashboard();
     }
 
@@ -3490,7 +3490,7 @@
             <div>
               <h2 style="font-size:20px">Chọn thời gian xem dữ liệu Shopee</h2>
               <p>Chọn shop/kênh bán để lọc hiển thị. Khi bấm đồng bộ, hệ thống vẫn lấy đủ tất cả shop đã kết nối và lưu snapshot đầy đủ để không mất dữ liệu shop khác.</p>
-              <p>${sourceText} · Đối soát: ${allChannelMetricBasis === "pay_time" ? "thanh toán" : allChannelMetricBasis === "update_time" ? "cập nhật đơn" : "tạo đơn"}</p>
+              <p>${sourceText} · Đối soát: thời gian tạo đơn · chi tiết đơn lấy trạng thái mới nhất</p>
               <p class="compare-note">Kỳ hiện tại: <b>${escapeHtml(data.date_from || allChannelDateFrom)} đến ${escapeHtml(data.date_to || allChannelDateTo)}</b> · Kỳ so sánh: <b>${escapeHtml(compareRangeText(view))}</b></p>
               ${data.lastError ? `<p style="color:#b91c1c"><b>Lỗi gần nhất:</b> ${escapeHtml(data.lastError)}</p>` : ""}
               <p id="allChannelAutoStatusLine"><b>Tự động cập nhật:</b> ${escapeHtml(allChannelAutoStatusText())} · Lần auto gần nhất: <b>${escapeHtml(lastAllChannelAutoSyncText)}</b></p>
@@ -3516,10 +3516,8 @@
             </div>
             <div class="form-field">
               <label>Đối soát theo</label>
-              <select onchange="setAllChannelMetricBasis(this.value)">
-                <option value="create_time" ${allChannelMetricBasis==="create_time"?"selected":""}>Thời gian tạo đơn</option>
-                <option value="pay_time" ${allChannelMetricBasis==="pay_time"?"selected":""}>Thời gian thanh toán</option>
-                <option value="update_time" ${allChannelMetricBasis==="update_time"?"selected":""}>Thời gian cập nhật đơn</option>
+              <select onchange="setAllChannelMetricBasis('create_time')">
+                <option value="create_time" selected>Thời gian tạo đơn - tối ưu nhanh & chính xác</option>
               </select>
             </div>
             ${periodControls}
@@ -3692,7 +3690,7 @@
     }
 
     async function fetchAllChannelSingleRange(endpoint, channel, dateFrom, dateTo, timeFromSec=0, timeToSec=0){
-      let url = `${endpoint}/api/shopee/all-channel-data?channel=${encodeURIComponent(channel)}&date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}&period=${encodeURIComponent(allChannelPeriodMode)}&compare=none&save=0&metric_basis=${encodeURIComponent(allChannelMetricBasis || "create_time")}`;
+      let url = `${endpoint}/api/shopee/all-channel-data?channel=${encodeURIComponent(channel)}&date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}&period=${encodeURIComponent(allChannelPeriodMode)}&compare=none&save=0&metric_basis=create_time`;
       if(timeFromSec && timeToSec && Number(timeToSec) > Number(timeFromSec)){
         url += `&time_from=${encodeURIComponent(timeFromSec)}&time_to=${encodeURIComponent(timeToSec)}`;
       }
@@ -4164,7 +4162,7 @@
         }
 
         const data = {
-          source: options.auto ? "shopee_order_api_all_channel_auto_refresh_v32_exact_shop_queue" : "shopee_order_api_all_channel_v32_gooby_exact_priority_snapshot",
+          source: options.auto ? "shopee_order_api_all_channel_auto_refresh_v33_create_time_fast" : "shopee_order_api_all_channel_v33_create_time_fast_snapshot",
           date_from:allChannelDateFrom,
           date_to:allChannelDateTo,
           selectedChannel:allChannelFilter,
