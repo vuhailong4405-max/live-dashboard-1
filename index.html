@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Live Realtime Dashboard - Ca live theo shop</title>
+  <title>Gooby Mẹ &amp; Bé – Vận hành Live</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Lexend:wght@600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500&amp;display=swap" rel="stylesheet">
   <style>
     :root{
       --bg:#f3f4f8;
@@ -317,22 +317,798 @@
       .card{padding:15px}
     }
   </style>
+  <style id="ui-optimizations">
+    /* UI refresh: giữ nguyên toàn bộ logic, chỉ tối ưu phân cấp thị giác và responsive. */
+    :root{
+      --bg:#f6f7fb;
+      --bg-accent:#f3f5f9;
+      --card:#ffffff;
+      --text:#182033;
+      --muted:#64708b;
+      --muted2:#8a94aa;
+      --line:#e4e8f0;
+      --line-soft:#edf0f5;
+      --ink:#141a2e;
+      --ink2:#202845;
+      --primary:#ff6b2c;
+      --primary-dark:#e9571d;
+      --primary2:#ff9a62;
+      --shadow-sm:0 1px 2px rgba(22,31,55,.05);
+      --shadow:0 8px 26px rgba(22,31,55,.07),0 1px 3px rgba(22,31,55,.04);
+      --shadow-lg:0 22px 55px rgba(22,31,55,.15),0 3px 10px rgba(22,31,55,.06);
+      --radius:15px;
+      --radius-lg:20px;
+    }
+
+    html{scroll-behavior:smooth}
+    body{
+      min-width:320px;
+      background-image:
+        radial-gradient(circle at 8% -6%,rgba(255,107,44,.075),transparent 25%),
+        radial-gradient(circle at 95% 0%,rgba(37,99,235,.055),transparent 28%);
+    }
+    button,input,select,textarea{min-height:42px}
+    button.small{min-height:34px}
+    button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+      outline:3px solid rgba(37,99,235,.23);outline-offset:2px
+    }
+    button:hover{transform:translateY(-1px)}
+    button.secondary{border:1px solid rgba(255,107,44,.12)}
+
+    /* Login gọn hơn, rõ trạng thái và thân thiện trên màn hình nhỏ. */
+    .login-page{padding:28px}
+    .login-card{
+      width:min(440px,100%);padding:34px;border-color:rgba(255,255,255,.9);
+      box-shadow:0 30px 70px -24px rgba(25,31,55,.28),0 2px 6px rgba(25,31,55,.05)
+    }
+    .login-card h1{font-size:25px;line-height:1.25}
+    .login-card p{font-size:13.5px;margin:0 0 18px}
+    .login-card button:not(.close){width:100%;min-height:44px}
+    .login-card .warning-note{margin-top:14px}
+
+    /* App shell */
+    header{
+      background:linear-gradient(118deg,#151a2e 0%,#1b2240 72%,#20294c 100%);
+      border-bottom-width:1px;
+      box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 10px 30px rgba(14,18,34,.18)
+    }
+    .header-wrap{max-width:1600px;min-height:72px;padding:12px 24px}
+    .header-mark{width:40px;height:40px;border-radius:12px}
+    .title-wrap h1{font-size:18px}
+    .title-wrap div{max-width:720px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .user-box{flex-wrap:nowrap}
+    .user-pill{padding:8px 12px;background:rgba(255,255,255,.075)}
+    header button{min-height:38px}
+
+    .app-body{max-width:1600px;margin:24px auto 64px;padding:0 24px;gap:24px}
+    .sidebar{
+      width:236px;flex-basis:236px;top:96px;padding:12px 10px;
+      border-color:var(--line);box-shadow:var(--shadow-sm)
+    }
+    .sidebar-label{padding:5px 12px 11px}
+    .tabs{gap:4px}
+    .tab{
+      min-height:42px;padding:10px 12px;border-left:0;border-radius:10px;
+      display:flex;align-items:center;gap:10px;color:#55617b
+    }
+    .tab::before{
+      content:"";width:7px;height:7px;border-radius:50%;flex:0 0 auto;
+      background:#c8cedb;box-shadow:0 0 0 4px transparent;transition:.16s var(--ease)
+    }
+    .tab:hover{background:#f5f6fa;color:var(--text)}
+    .tab.active{
+      border-left:0;background:linear-gradient(100deg,#fff0e8,#fff7f2);color:#b84b18;
+      box-shadow:inset 0 0 0 1px rgba(255,107,44,.08)
+    }
+    .tab.active::before{background:var(--primary);box-shadow:0 0 0 4px rgba(255,107,44,.12)}
+
+    /* Bố cục nội dung */
+    .grid{gap:14px}
+    .stats-grid{grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:20px}
+    .live-grid{grid-template-columns:repeat(2,minmax(360px,1fr));gap:16px}
+    .card{border-color:var(--line);box-shadow:var(--shadow-sm);padding:18px}
+    .card:hover{border-color:#dce1eb}
+    .stats-grid .card{
+      min-width:0;padding:18px 16px 16px;border-color:var(--line);box-shadow:var(--shadow-sm)
+    }
+    .stats-grid .card:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
+    .stats-grid .card::before{height:3px}
+    .stats-grid .card:nth-child(6n+1)::before{background:linear-gradient(90deg,var(--primary),var(--primary2))}
+    .stats-grid .card:nth-child(6n+2)::before{background:linear-gradient(90deg,var(--green),#4ade80)}
+    .stats-grid .card:nth-child(6n+3)::before{background:linear-gradient(90deg,var(--blue),#60a5fa)}
+    .stats-grid .card:nth-child(6n+4)::before{background:linear-gradient(90deg,var(--purple),#a78bfa)}
+    .stats-grid .card:nth-child(6n+5)::before{background:linear-gradient(90deg,#e8790b,#fbbf24)}
+    .stats-grid .card:nth-child(6n+6)::before{background:linear-gradient(90deg,#0891b2,#22d3ee)}
+    .stat-title{min-height:28px;margin-bottom:7px;font-size:10.5px;line-height:1.35}
+    .stat-value{font-size:24px;line-height:1.1}
+    .stat-note{font-size:11.5px;line-height:1.4}
+    .section-head{margin:28px 0 14px}
+    .section-head h2{font-size:19px}
+
+    /* Bộ lọc kênh trở thành thanh công cụ thay vì một khối nội dung lớn. */
+    #channelToolbar .card{margin-bottom:18px!important}
+    #channelToolbar .section-head{
+      align-items:center!important;padding:0;margin:0!important
+    }
+    #channelToolbar .section-head p{margin-top:4px}
+    #channelToolbar .toolbar{align-items:center;justify-content:flex-end;flex-wrap:nowrap}
+    #channelToolbar select{width:220px;min-width:220px!important;background:#fff}
+    #channelToolbar button{white-space:nowrap}
+    .toolbar select{width:auto}
+
+    /* Khối realtime và card ca live */
+    .sync-panel{
+      border-color:rgba(37,99,235,.18);
+      background:linear-gradient(140deg,#fff 0%,#f7faff 100%);
+      box-shadow:0 10px 32px rgba(37,99,235,.07)
+    }
+    .sync-panel > .section-head{align-items:center!important}
+    .sync-panel > .section-head .toolbar{flex:0 0 auto}
+    .sync-mini-grid{gap:9px}
+    .sync-mini{padding:11px;border-color:#e7ebf3;background:rgba(255,255,255,.9)}
+    .sync-mini .value{font-size:18px}
+    .live-card{padding:20px;box-shadow:var(--shadow-sm)}
+    .live-card:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
+    .person-row{margin-bottom:12px}
+    .avatar{width:44px;height:44px;border-radius:12px}
+    .metrics{gap:7px;margin:10px 0}
+    .metric{min-width:0;padding:10px;background:#f6f7fa;border-color:#eceff4}
+    .metric-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .metric-value{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .live-card .alert-box{margin:12px 0 10px}
+    .live-card .actions{padding-top:12px;border-top:1px solid var(--line-soft)}
+
+    /* Dữ liệu dày vẫn đọc nhanh và cuộn rõ ràng. */
+    .table-scroll{border:1px solid var(--line);background:#fff;box-shadow:var(--shadow-sm)}
+    .table-scroll table{box-shadow:none;border-radius:0}
+    table{box-shadow:var(--shadow-sm)}
+    thead{position:sticky;top:0;z-index:2}
+    th{background:#f6f7fa;color:#59647c}
+    tbody tr:nth-child(even){background:#fcfcfd}
+    tbody tr:hover{background:#fff7f2}
+    td .small{margin:2px 1px}
+    .badge{border:1px solid transparent}
+    .badge.green{border-color:#bbf7d0}.badge.yellow{border-color:#fde68a}
+    .badge.red{border-color:#fecaca}.badge.blue{border-color:#bfdbfe}
+    .badge.purple{border-color:#ddd6fe}.badge.gray{border-color:#dde1e9}
+
+    /* Modal và phản hồi hệ thống */
+    .modal-backdrop{background:rgba(13,17,30,.64);backdrop-filter:blur(6px)}
+    .modal{border-color:rgba(255,255,255,.85);padding:24px}
+    .toast{left:50%;right:auto;bottom:24px;transform:translateX(-50%);max-width:min(460px,calc(100vw - 32px));text-align:center}
+    .toast.active{animation:toastIn .2s var(--ease)}
+    @keyframes toastIn{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
+
+    @media(max-width:1320px){
+      .stats-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+      .live-grid{grid-template-columns:repeat(2,minmax(320px,1fr))}
+    }
+    @media(max-width:1120px){
+      .stats-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+      .live-grid{grid-template-columns:1fr}
+      .sync-mini-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+    }
+    @media(max-width:960px){
+      .app-body{gap:16px;margin-top:16px}
+      .sidebar{
+        position:sticky;top:72px;z-index:24;width:100%;flex:none;padding:7px 8px;border-radius:12px;
+        box-shadow:0 8px 22px rgba(22,31,55,.08)
+      }
+      .tabs{gap:4px}
+      .tab{border-bottom:0;min-height:38px;padding:8px 11px;border-radius:9px;white-space:nowrap}
+      .tab.active{border-bottom:0}
+    }
+    @media(max-width:720px){
+      .header-wrap{min-height:64px;padding:10px 14px;flex-direction:row;align-items:center}
+      .header-mark{width:38px;height:38px}
+      .title-wrap h1{font-size:16px}
+      .title-wrap div,#clockPill{display:none}
+      .user-box{margin-left:auto;gap:6px}
+      #currentUserPill{max-width:112px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:7px 9px}
+      header button{min-height:36px;padding:8px 10px;font-size:12px}
+      .app-body{margin:12px auto 40px;padding:0 12px}
+      .sidebar{top:64px;margin:0 -2px;width:calc(100% + 4px)}
+      .stats-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+      .stats-grid .card{padding:15px 13px 13px}
+      .stat-title{min-height:28px;font-size:10px}
+      .stat-value{font-size:21px}
+      .stat-note{font-size:10.5px}
+      #channelToolbar .card{padding:15px}
+      #channelToolbar .section-head{display:block}
+      #channelToolbar .toolbar{margin-top:12px;justify-content:stretch;flex-wrap:wrap}
+      #channelToolbar select{width:100%;min-width:0!important}
+      #channelToolbar button{flex:1}
+      .section-head{align-items:flex-start}
+      .section-head .toolbar{width:100%}
+      .section-head .toolbar button{flex:1}
+      .sync-panel > .section-head{display:block}
+      .sync-panel > .section-head .toolbar{margin-top:12px}
+      .sync-panel > .section-head .toolbar button{flex:1}
+      .sync-mini-grid{grid-template-columns:1fr 1fr}
+      .sync-mini{padding:10px}
+      .sync-mini .value{font-size:16px}
+      .live-grid{grid-template-columns:minmax(0,1fr)}
+      .live-card{padding:16px}
+      .person-row{display:block}
+      .person-row > .badge{margin:10px 0 0 55px}
+      .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .live-card .actions button{flex:1 1 calc(50% - 8px)}
+      .form-grid,.form-grid.two,.form-grid.three,.form-grid.four{grid-template-columns:1fr}
+      .modal-backdrop{align-items:flex-end;padding:0}
+      .modal{width:100%;max-height:94svh;border-radius:22px 22px 0 0;padding:22px 16px 18px}
+      .toast{bottom:16px}
+    }
+    @media(max-width:420px){
+      #currentUserPill{display:none}
+      .login-page{padding:14px}
+      .login-card{padding:24px 20px;border-radius:20px}
+      .stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .sync-mini-grid{grid-template-columns:1fr}
+      .hour-row{grid-template-columns:58px 1fr 78px;gap:7px}
+    }
+    @media(prefers-reduced-motion:reduce){
+      html{scroll-behavior:auto}
+      *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+    }
+  </style>
+  <style id="mom-baby-brand-theme">
+    :root{
+      --bg:#fffaf6;
+      --bg-accent:#fbf4ef;
+      --card:#fffefd;
+      --text:#314953;
+      --muted:#71818a;
+      --muted2:#96a1a5;
+      --line:#eadfd9;
+      --line-soft:#f1e9e4;
+      --ink:#29424e;
+      --ink2:#355460;
+      --primary:#df7f89;
+      --primary-dark:#c96572;
+      --primary2:#f1b0b1;
+      --green:#5c9b79;
+      --yellow:#c78b42;
+      --red:#c95f64;
+      --blue:#648fa3;
+      --purple:#8d78a7;
+      --shadow-sm:0 2px 8px rgba(57,72,77,.055);
+      --shadow:0 14px 34px rgba(57,72,77,.09),0 2px 8px rgba(57,72,77,.04);
+      --shadow-lg:0 28px 70px rgba(57,72,77,.16),0 4px 14px rgba(57,72,77,.06);
+    }
+
+    body{
+      background-color:var(--bg);
+      background-image:
+        radial-gradient(circle at 2% 1%,rgba(244,196,192,.25),transparent 20%),
+        radial-gradient(circle at 98% 5%,rgba(199,220,226,.3),transparent 24%)
+    }
+    ::selection{background:rgba(223,127,137,.24)}
+    ::-webkit-scrollbar-thumb{background:#d9cbc4;border-color:var(--bg)}
+
+    button{background:var(--primary);box-shadow:0 3px 8px rgba(201,101,114,.18)}
+    button:hover{background:var(--primary-dark);box-shadow:0 8px 18px -7px rgba(201,101,114,.48)}
+    button.secondary{background:#fff2e0;color:#7b5942;border-color:#efd8bc}
+    button.secondary:hover{background:#f9e5ca;color:#684832}
+    button.dark{background:var(--ink)}
+    input,select,textarea{background:#fffdfb;border-color:var(--line);color:var(--text)}
+    input:focus,select:focus,textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3.5px rgba(223,127,137,.14)}
+
+    /* Header thương hiệu đặt giữa như bố cục tham chiếu. */
+    header{
+      background:var(--ink);border-bottom:0;
+      box-shadow:0 1px 0 rgba(255,255,255,.07) inset
+    }
+    .header-wrap{
+      position:relative;display:grid;grid-template-columns:1fr auto 1fr;
+      max-width:1600px;min-height:78px;padding:13px 28px
+    }
+    .header-wrap::before{
+      content:"VẬN HÀNH LIVE MẸ & BÉ";align-self:center;justify-self:start;
+      color:#cbd7d9;font-size:10px;font-weight:700;letter-spacing:1.2px
+    }
+    .header-brand{grid-column:2;justify-self:center;gap:9px}
+    .header-mark{
+      width:34px;height:34px;border-radius:50%;background:#fff1d8;color:#d87580;
+      font-family:Georgia,serif;font-size:16px;box-shadow:none
+    }
+    .title-wrap{text-align:center}
+    .title-wrap h1{
+      font-family:Georgia,'Times New Roman',serif;font-size:22px;letter-spacing:.9px;
+      font-weight:700;color:#fffaf0
+    }
+    .title-wrap div{display:none}
+    .user-box{grid-column:3;justify-self:end;flex-wrap:nowrap}
+    .user-pill{background:transparent;border-color:rgba(255,255,255,.17);color:#e7eeee;font-size:11px}
+    header .secondary{background:rgba(255,247,232,.1);color:#fff8e9;border-color:rgba(255,255,255,.16)}
+    header .secondary:hover{background:rgba(255,247,232,.18);color:#fff}
+
+    /* Menu ngang bên dưới logo. */
+    .app-body{
+      max-width:1600px;margin:0 auto 70px;padding:0 24px;
+      display:grid;grid-template-columns:minmax(0,1fr);gap:0;align-items:start
+    }
+    .sidebar{
+      width:100%;height:auto;max-height:none;flex:none;position:sticky;top:78px;z-index:25;
+      padding:0 22px;background:var(--ink);border:0;border-radius:0 0 18px 18px;
+      box-shadow:0 12px 25px rgba(41,66,78,.12);overflow-x:auto;overflow-y:hidden
+    }
+    .sidebar-label{display:none}
+    .tabs{
+      min-width:max-content;display:flex;flex-direction:row;justify-content:center;gap:2px;
+      margin:0;padding:0;overflow:visible
+    }
+    .tab{
+      min-height:47px;padding:10px 13px;border:0;border-bottom:2px solid transparent;border-radius:0;
+      color:#cbd7d9;font-size:10.5px;font-weight:700;letter-spacing:.35px;text-align:center;white-space:nowrap
+    }
+    .tab::before{display:none}
+    .tab:hover{background:rgba(255,255,255,.06);color:#fffaf0}
+    .tab.active,.tab.active:hover{
+      background:transparent;color:#fff1cf;border:0;border-bottom:2px solid #f1c9bd;box-shadow:none
+    }
+    main{width:100%;padding-top:22px}
+
+    /* Hero chia đôi: minh họa mẹ & bé + thông điệp/CTA. */
+    #channelToolbar .channel-hero{
+      min-height:330px;margin-bottom:24px!important;padding:0!important;overflow:hidden;
+      display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+      border:0;border-radius:20px;background:#dbe8ec;
+      box-shadow:0 20px 46px rgba(64,85,91,.13)
+    }
+    .channel-visual{
+      position:relative;min-width:0;overflow:hidden;background:#f3cfd0;
+      display:grid;place-items:center
+    }
+    .channel-visual::before{
+      content:"";position:absolute;inset:0;
+      background:linear-gradient(145deg,rgba(255,255,255,.12),transparent 45%),radial-gradient(circle at 30% 10%,rgba(255,255,255,.34),transparent 30%)
+    }
+    .channel-visual svg{position:relative;width:100%;height:100%;min-height:330px;object-fit:cover}
+    .channel-visual-caption{
+      position:absolute;left:24px;bottom:20px;padding:8px 12px;border-radius:999px;
+      background:rgba(255,253,247,.84);color:#6d5557;font-size:11px;font-weight:800;
+      letter-spacing:.35px;backdrop-filter:blur(5px)
+    }
+    .channel-hero-content{
+      padding:42px 54px;background:#dce8ec;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;text-align:center
+    }
+    .hero-eyebrow{
+      color:#7d6670;font-size:10.5px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase
+    }
+    .channel-hero-content h2{
+      margin:13px 0 14px;color:var(--ink);font-family:Georgia,'Times New Roman',serif;
+      font-size:35px;line-height:1.04;letter-spacing:-.7px
+    }
+    .channel-hero-content p{max-width:480px;margin:0;color:#5d727b;font-size:13px;line-height:1.65}
+    .hero-toolbar{
+      width:min(470px,100%);margin-top:22px;display:grid;grid-template-columns:minmax(190px,1fr) auto;
+      gap:10px;align-items:end
+    }
+    #channelToolbar .hero-toolbar select{width:100%;min-width:0!important;background:#fffdf8;border-color:#b9c9ce}
+    #channelToolbar .hero-toolbar button{white-space:nowrap;min-height:42px}
+
+    .channel-filter-compact{
+      min-height:72px;margin-bottom:20px!important;padding:14px 18px!important;
+      display:flex;align-items:center;justify-content:space-between;gap:18px;
+      background:linear-gradient(110deg,#fffefd,#fbf5ee)
+    }
+    .channel-filter-compact p{margin:5px 0 0;color:var(--muted);font-size:12px}
+    .channel-filter-compact .toolbar{align-items:center;flex-wrap:nowrap}
+    #channelToolbar .channel-filter-compact select{width:220px;min-width:220px!important;background:#fff}
+
+    /* Dashboard sáng, mềm và phù hợp ngành hàng mẹ & bé. */
+    .card{background:var(--card);border-color:var(--line);border-radius:18px}
+    .stats-grid{gap:12px}
+    .stats-grid .card{border-color:#eee3dc;background:#fffefd;border-radius:16px}
+    .stats-grid .card:nth-child(6n+1)::before{background:#e99a91}
+    .stats-grid .card:nth-child(6n+2)::before{background:#8fbaa2}
+    .stats-grid .card:nth-child(6n+3)::before{background:#91b6c4}
+    .stats-grid .card:nth-child(6n+4)::before{background:#b7a1c5}
+    .stats-grid .card:nth-child(6n+5)::before{background:#dfb260}
+    .stats-grid .card:nth-child(6n+6)::before{background:#77b6b8}
+    .stat-title{color:#7c8589}
+    .stat-value{color:var(--ink)}
+    .section-head h2,.modal-head h3{color:var(--ink)}
+    .sync-panel{
+      border-color:#cbdde3;background:linear-gradient(140deg,#fffefd 0%,#edf5f7 100%);
+      box-shadow:0 12px 30px rgba(89,122,133,.08)
+    }
+    .sync-mini{background:rgba(255,254,252,.9);border-color:#dfe9eb}
+    .live-card{border-color:#eadfd9}
+    .live-card::before{background:#c9c1bc}
+    .live-card.active::before{background:#7fb195}
+    .live-card.ended::before{background:#8cb3c2}
+    .live-card.reported::before{background:#aa93bb}
+    .avatar{background:linear-gradient(135deg,#fff0e0,#f5d7cf);color:#a75f65}
+    .metric{background:#fbf6f2;border-color:#f0e7e1}
+    .metric:hover{background:#f8eee7}
+    .progress{background:#f1e7e1}
+    .progress-bar{background:linear-gradient(90deg,#df7f89,#f0b0ae)}
+    .empty{background:#fbf5f0;border-color:#dfd2cb}
+    th{background:#f7f1ec;color:#65757b}
+    tbody tr:nth-child(even){background:#fffdfb}
+    tbody tr:hover{background:#fff5ee}
+    .table-scroll{border-color:#eadfd9}
+    .modal-backdrop{background:rgba(33,52,61,.64)}
+    .warning-note{background:#fff5e8;color:#895b39;border-color:#efd3b2}
+
+    .login-page{
+      background:
+        radial-gradient(circle at 15% 16%,rgba(244,196,192,.5),transparent 27%),
+        radial-gradient(circle at 87% 14%,rgba(195,220,226,.55),transparent 29%),
+        radial-gradient(circle at 50% 100%,rgba(255,232,191,.42),transparent 34%),#fffaf6
+    }
+    .login-card{border-color:#f0e5df;background:rgba(255,254,252,.96)}
+    .brand-mark{border-radius:50%;background:linear-gradient(135deg,#df7f89,#efaaa7);box-shadow:0 12px 24px -8px rgba(201,101,114,.45)}
+    .login-card h1{color:var(--ink);font-family:Georgia,'Times New Roman',serif;font-size:28px}
+
+    @media(max-width:960px){
+      .header-wrap{grid-template-columns:auto 1fr auto;min-height:68px;padding:10px 16px}
+      .header-wrap::before{display:none}
+      .header-brand{grid-column:1;justify-self:start}
+      .title-wrap{text-align:left}
+      .title-wrap h1{font-size:18px}
+      .user-box{grid-column:3}
+      .app-body{padding:0 14px;margin-bottom:50px}
+      .sidebar{top:68px;padding:0 8px;border-radius:0 0 14px 14px}
+      .tabs{justify-content:flex-start}
+      .tab{min-height:44px;padding:9px 12px}
+      main{padding-top:16px}
+      #channelToolbar .channel-hero{min-height:300px}
+      .channel-hero-content{padding:34px 30px}
+      .channel-hero-content h2{font-size:31px}
+      .channel-visual svg{min-height:300px}
+    }
+    @media(max-width:720px){
+      .header-wrap{display:grid;min-height:64px;padding:9px 12px}
+      .header-mark{width:34px;height:34px}
+      .title-wrap h1{font-size:15px;letter-spacing:.45px}
+      .app-body{margin:0 auto 42px;padding:0 10px;gap:0}
+      .sidebar{top:64px;width:100%;margin:0;padding:0 5px}
+      main{padding-top:12px}
+      #channelToolbar .channel-hero{
+        grid-template-columns:1fr;min-height:0;margin-bottom:18px!important;border-radius:18px
+      }
+      .channel-visual{min-height:208px}
+      .channel-visual svg{min-height:208px;height:208px}
+      .channel-visual-caption{left:14px;bottom:12px;padding:6px 9px;font-size:9.5px}
+      .channel-hero-content{padding:26px 20px 28px}
+      .channel-hero-content h2{font-size:28px;margin:10px 0 12px}
+      .channel-hero-content p{font-size:12px}
+      .hero-toolbar{grid-template-columns:1fr;margin-top:18px}
+      #channelToolbar .hero-toolbar select{width:100%}
+      .channel-filter-compact{display:block;padding:14px!important}
+      .channel-filter-compact .toolbar{margin-top:11px;flex-wrap:wrap}
+      #channelToolbar .channel-filter-compact select{width:100%;min-width:0!important}
+      .channel-filter-compact .toolbar button{flex:1}
+      .stats-grid{margin-bottom:18px}
+    }
+    @media(max-width:420px){
+      .header-brand{gap:7px}
+      .header-mark{display:none}
+      .title-wrap h1{font-size:14px}
+      .channel-visual{min-height:190px}
+      .channel-visual svg{min-height:190px;height:190px}
+      .channel-hero-content{padding:24px 16px 26px}
+      .channel-hero-content h2{font-size:26px}
+    }
+  </style>
+  <style id="humanized-editorial-polish">
+    :root{
+      --bg:#f7f5f2;
+      --bg-accent:#f2f0ec;
+      --card:#ffffff;
+      --text:#30464f;
+      --muted:#6e7d82;
+      --muted2:#929b9e;
+      --line:#dedbd6;
+      --line-soft:#ebe8e3;
+      --ink:#2d444d;
+      --ink2:#3a535c;
+      --primary:#bd777b;
+      --primary-dark:#a86469;
+      --primary2:#d8a0a0;
+      --shadow-sm:0 1px 3px rgba(42,57,61,.045);
+      --shadow:0 10px 28px rgba(42,57,61,.075);
+      --shadow-lg:0 24px 60px rgba(42,57,61,.14)
+    }
+
+    body{background:var(--bg);background-image:none}
+    button{
+      border-radius:7px;box-shadow:none;transition:background-color .15s ease,border-color .15s ease,color .15s ease
+    }
+    button:hover{transform:none;box-shadow:none}
+    button.secondary{background:#f4eadc;color:#765545;border-color:#ddcbb8}
+    button.secondary:hover{background:#ecdfcf;color:#624538}
+    input,select,textarea{border-width:1px;border-radius:7px;background:#fff}
+
+    header{background:#2c454f;box-shadow:none}
+    .header-wrap{min-height:76px;padding:12px 28px}
+    .header-wrap::before{content:"VẬN HÀNH LIVE / 2026";color:#c7d0d2;letter-spacing:1.35px}
+    .header-brand{gap:0}
+    .header-mark{display:none}
+    .title-wrap h1{display:flex;align-items:baseline;justify-content:center;gap:10px;letter-spacing:0}
+    .title-wrap h1 span{font-family:Georgia,'Times New Roman',serif;font-size:25px;letter-spacing:.5px}
+    .title-wrap h1 small{font-family:var(--font);font-size:8.5px;font-weight:700;letter-spacing:1.55px;color:#d8e0e1}
+    .user-pill,header button{border-radius:7px}
+
+    .sidebar{
+      top:76px;border-radius:0 0 6px 6px;padding:0 18px;background:#2c454f;
+      box-shadow:0 7px 16px rgba(44,69,79,.09)
+    }
+    .tabs{gap:8px}
+    .tab{
+      min-height:45px;padding:10px 9px;font-size:10px;font-weight:700;letter-spacing:.25px;
+      color:#c6d0d2
+    }
+    .tab.active,.tab.active:hover{color:#fff1d7;border-bottom-color:#d3aaa3}
+    .app-body{margin-bottom:64px}
+    main{padding-top:20px}
+
+    .card{border-radius:10px;box-shadow:var(--shadow-sm)}
+    .card:hover{border-color:#d3cfca}
+    .stats-grid .card{border-radius:9px;box-shadow:none;padding:17px 16px}
+    .stats-grid .card::before{display:none}
+    .stats-grid .card:hover{box-shadow:none;transform:none;background:#fdfcfb}
+    .stat-title{min-height:0;margin-bottom:16px;color:#788489;font-size:10px;letter-spacing:.7px}
+    .stat-value{font-size:23px;font-family:var(--font);font-weight:750;letter-spacing:-.45px}
+    .stat-note{margin-top:7px;color:#8a9598}
+    .section-head h2{font-family:Georgia,'Times New Roman',serif;font-size:21px;font-weight:700;letter-spacing:-.2px}
+
+    /* Still life sản phẩm: có chủ đích như art direction catalog, không dùng mascot. */
+    #channelToolbar .channel-hero{
+      min-height:342px;border-radius:7px;background:#c7d3d6;box-shadow:0 14px 34px rgba(52,71,77,.095)
+    }
+    .channel-visual{background:#cfa6a3}
+    .channel-visual::before{display:none}
+    .channel-visual svg{display:none}
+    .product-stage{position:absolute;inset:0;overflow:hidden}
+    .stage-copy{position:absolute;z-index:5;left:34px;top:30px;color:#314a52}
+    .stage-copy span{display:block;margin-bottom:9px;font-size:9px;font-weight:800;letter-spacing:1.45px}
+    .stage-copy strong{
+      display:block;font-family:Georgia,'Times New Roman',serif;font-size:25px;line-height:1.08;font-weight:700
+    }
+    .stage-sun{position:absolute;left:54px;top:148px;width:70px;height:70px;border-radius:50%;background:#f2dfb3}
+    .stage-arch{
+      position:absolute;right:42px;bottom:46px;width:300px;height:258px;
+      border-radius:150px 150px 0 0;background:#9dafb3
+    }
+    .stage-surface{position:absolute;left:0;right:0;bottom:0;height:62px;background:#e9dfd1}
+    .product{position:absolute;z-index:4;color:#354d55;box-shadow:0 15px 28px rgba(68,61,58,.13)}
+    .product-box{
+      left:58px;bottom:62px;width:112px;height:151px;padding:17px 14px;
+      background:#f3eee6;border:1px solid rgba(84,72,67,.13)
+    }
+    .product-box::after{content:"";position:absolute;left:13px;right:13px;bottom:16px;height:1px;background:#c9b8a8}
+    .product-box i{display:block;font-family:Georgia,serif;font-size:34px;font-style:normal;color:#ae7374}
+    .product-box span{position:absolute;left:14px;bottom:25px;font-size:9px;font-weight:800;line-height:1.25;letter-spacing:1.2px}
+    .product-bottle{
+      left:202px;bottom:62px;width:91px;height:150px;padding-top:52px;text-align:center;
+      border-radius:20px 20px 7px 7px;background:#dce7e7;border:1px solid rgba(57,78,84,.12)
+    }
+    .product-bottle::before{
+      content:"";position:absolute;left:24px;top:-24px;width:43px;height:36px;border-radius:5px 5px 2px 2px;
+      background:#f1e8dc;border:1px solid rgba(57,78,84,.1)
+    }
+    .product-bottle i{display:block;width:34px;height:34px;margin:0 auto 18px;border-radius:50%;background:#fff7e8}
+    .product-bottle span{font-family:Georgia,serif;font-size:13px;font-weight:700;letter-spacing:.4px}
+    .product-jar{
+      left:326px;bottom:62px;width:145px;height:92px;padding-top:26px;text-align:center;
+      border-radius:9px 9px 6px 6px;background:#ead7c9;border:1px solid rgba(80,66,58,.12)
+    }
+    .product-jar::before{
+      content:"";position:absolute;left:-4px;right:-4px;top:-13px;height:19px;border-radius:5px 5px 2px 2px;
+      background:#f2ece4;border:1px solid rgba(80,66,58,.12)
+    }
+    .product-jar span{display:block;font-size:10px;font-weight:800;letter-spacing:1.4px}
+    .product-jar small{display:block;margin-top:5px;font-family:Georgia,serif;font-size:11px;color:#796c66}
+    .channel-visual-caption{
+      left:auto;right:20px;bottom:18px;padding:0;background:transparent;border-radius:0;
+      color:#6d625d;font-size:8.5px;letter-spacing:1.25px;backdrop-filter:none
+    }
+
+    .channel-hero-content{padding:42px 58px;background:#c7d3d6}
+    .hero-eyebrow{color:#756267;font-size:9px;letter-spacing:1.6px}
+    .channel-hero-content h2{
+      max-width:500px;margin:15px 0 15px;font-size:36px;line-height:1.05;letter-spacing:-.8px
+    }
+    .channel-hero-content p{color:#5e7076;line-height:1.55}
+    .hero-toolbar{margin-top:24px}
+    #channelToolbar .hero-toolbar select{border-color:#9eafb4;background:#fdfbf7}
+
+    .channel-filter-compact{border-radius:8px;background:#fff;box-shadow:none}
+    .sync-panel{border-radius:10px;background:#fff;box-shadow:none;border-color:#d3dde0}
+    .sync-mini{border-radius:7px;background:#f7f7f5}
+    .live-card{border-radius:10px;box-shadow:none}
+    .live-card:hover{box-shadow:var(--shadow);transform:none}
+    .avatar,.metric,.alert-box,.warning-note,.empty{border-radius:7px}
+    .metric{background:#f6f4f1;border-color:#ebe7e1}
+    .metric:hover{background:#f1eee9}
+    .badge{border-radius:5px}
+    .table-scroll,table{border-radius:8px;box-shadow:none}
+    .modal{border-radius:12px}
+
+    .login-card{border-radius:12px;box-shadow:0 22px 55px rgba(45,68,77,.13)}
+    .brand-mark{width:48px;height:48px;border-radius:50%;background:#bd777b;box-shadow:none}
+    .login-card h1{font-size:27px}
+
+    @media(max-width:960px){
+      .header-wrap{min-height:68px}
+      .sidebar{top:68px}
+      #channelToolbar .channel-hero{min-height:310px}
+      .channel-hero-content{padding:34px 32px}
+      .channel-hero-content h2{font-size:31px}
+      .stage-arch{right:24px;width:250px}
+      .product-box{left:34px}
+      .product-bottle{left:168px}
+      .product-jar{left:282px}
+    }
+    @media(max-width:720px){
+      .header-wrap{min-height:64px}
+      .title-wrap h1{display:block;text-align:left;line-height:1}
+      .title-wrap h1 span{font-size:18px}
+      .title-wrap h1 small{display:block;margin-top:4px;font-size:7px;letter-spacing:1.2px}
+      .sidebar{top:64px;border-radius:0 0 5px 5px}
+      .tabs{gap:5px}
+      .tab{font-size:9.5px}
+      #channelToolbar .channel-hero{border-radius:7px}
+      .channel-visual{min-height:214px}
+      .channel-visual svg{display:none}
+      .product-stage{height:214px}
+      .stage-copy{left:20px;top:18px}
+      .stage-copy span{margin-bottom:6px;font-size:7.5px}
+      .stage-copy strong{font-size:19px}
+      .stage-sun{left:24px;top:112px;width:43px;height:43px}
+      .stage-arch{right:20px;bottom:28px;width:166px;height:155px;border-radius:90px 90px 0 0}
+      .stage-surface{height:30px}
+      .product-box{left:28px;bottom:30px;width:67px;height:94px;padding:9px}
+      .product-box i{font-size:22px}
+      .product-box span{left:9px;bottom:15px;font-size:6px}
+      .product-box::after{left:8px;right:8px;bottom:10px}
+      .product-bottle{left:113px;bottom:30px;width:58px;height:112px;padding-top:39px;border-radius:13px 13px 5px 5px}
+      .product-bottle::before{left:15px;top:-15px;width:28px;height:23px}
+      .product-bottle i{width:23px;height:23px;margin-bottom:10px}
+      .product-bottle span{font-size:9px}
+      .product-jar{left:188px;bottom:30px;width:93px;height:58px;padding-top:16px}
+      .product-jar::before{top:-9px;height:13px}
+      .product-jar span{font-size:7px}
+      .product-jar small{margin-top:2px;font-size:7px}
+      .channel-visual-caption{right:11px;bottom:8px;font-size:6.5px}
+      .channel-hero-content{padding:28px 20px 30px}
+      .channel-hero-content h2{font-size:28px;line-height:1.08}
+      .stats-grid .card{padding:15px 13px}
+      .stat-title{margin-bottom:14px}
+      .modal{border-radius:12px 12px 0 0}
+    }
+  </style>
+  <style id="professional-type-system">
+    :root{
+      --bg:#f5f4f2;
+      --bg-accent:#efeeeb;
+      --card:#ffffff;
+      --text:#2c4149;
+      --muted:#6d7a7f;
+      --muted2:#90999c;
+      --line:#dcd9d4;
+      --line-soft:#eae7e2;
+      --ink:#29424b;
+      --ink2:#344e57;
+      --primary:#aa696d;
+      --primary-dark:#92565b;
+      --primary2:#c28b8d;
+      --font:'Be Vietnam Pro','Segoe UI',Arial,sans-serif;
+      --font-display:'Be Vietnam Pro','Segoe UI',Arial,sans-serif
+    }
+
+    html,body,button,input,select,textarea{font-family:var(--font);font-synthesis:none}
+    body{font-size:14px;line-height:1.5;letter-spacing:-.01em;text-rendering:optimizeLegibility}
+    button,input,select,textarea{letter-spacing:0}
+    button{font-weight:600;border-radius:5px}
+    input,select,textarea{border-radius:5px}
+
+    header{background:#29424b}
+    .header-wrap::before{font-size:9px;font-weight:600;letter-spacing:1.5px}
+    .title-wrap h1{font-family:var(--font);gap:9px}
+    .title-wrap h1 span{font-family:var(--font);font-size:20px;font-weight:800;letter-spacing:2px}
+    .title-wrap h1 small{font-family:var(--font);font-size:8px;font-weight:600;letter-spacing:1.35px}
+    .user-pill{font-weight:600}
+    .sidebar{background:#29424b}
+    .tab{font-family:var(--font);font-size:10px;font-weight:600;letter-spacing:0}
+    .tab.active,.tab.active:hover{border-bottom-color:#d6a7a2}
+
+    .section-head h2,.modal-head h3,.login-card h1{
+      font-family:var(--font);font-weight:700;letter-spacing:-.035em
+    }
+    .section-head h2{font-size:20px}
+    .modal-head h3{font-size:19px}
+    .login-card h1{font-size:26px}
+    .name{font-weight:700}
+    .stat-value{font-family:var(--font);font-size:23px;font-weight:700}
+    .metric-value,.sync-mini .value{font-family:var(--font);font-weight:700}
+
+    .card{border-radius:7px;box-shadow:none}
+    .stats-grid .card{border-radius:6px}
+    .sync-panel,.live-card,.channel-filter-compact{border-radius:7px}
+    .metric,.sync-mini,.alert-box,.warning-note,.empty{border-radius:5px}
+    .badge{border-radius:4px;font-weight:600}
+
+    /* Hero không dùng hình minh họa: poster chữ và hệ thống lưới thương hiệu. */
+    #channelToolbar .channel-hero{
+      min-height:336px;border-radius:6px;background:#c6d2d5;
+      box-shadow:0 12px 28px rgba(42,61,67,.08)
+    }
+    .channel-visual{position:relative;background:#a97975}
+    .channel-visual::after{
+      content:"";position:absolute;inset:0;pointer-events:none;opacity:.18;
+      background-image:linear-gradient(rgba(255,255,255,.28) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.28) 1px,transparent 1px);
+      background-size:44px 44px
+    }
+    .editorial-poster{
+      position:absolute;inset:0;z-index:2;padding:28px 30px 26px;color:#fffaf2;
+      display:flex;flex-direction:column;justify-content:space-between
+    }
+    .poster-meta{display:flex;align-items:center;justify-content:space-between;gap:20px;font-size:9px;font-weight:600;letter-spacing:1.35px}
+    .poster-main{position:relative;display:flex;align-items:flex-end;min-height:190px;border-left:2px solid rgba(255,250,242,.8);padding:0 0 9px 22px}
+    .poster-index{
+      position:absolute;right:2px;bottom:-25px;color:rgba(255,250,242,.12);
+      font-size:178px;font-weight:800;line-height:1;letter-spacing:-.08em
+    }
+    .poster-main strong{position:relative;z-index:1;font-size:34px;font-weight:700;line-height:1.08;letter-spacing:-.045em}
+    .poster-footer{display:flex;align-items:center;gap:12px;font-size:8.5px;font-weight:600;letter-spacing:1.2px}
+    .poster-footer i{width:28px;height:1px;background:rgba(255,250,242,.55)}
+
+    .channel-hero-content{padding:44px 58px;background:#c6d2d5}
+    .hero-eyebrow{font-family:var(--font);font-size:9px;font-weight:600;letter-spacing:1.55px;color:#715d60}
+    .channel-hero-content h2{
+      max-width:520px;margin:14px 0 15px;font-family:var(--font);font-size:32px;
+      font-weight:700;line-height:1.18;letter-spacing:-.045em;text-wrap:balance;color:#29424b
+    }
+    .channel-hero-content p{font-size:12.5px;line-height:1.65;color:#5d6d72}
+    .hero-toolbar{margin-top:23px}
+    .hero-toolbar select,.hero-toolbar button{border-radius:5px}
+
+    th{font-weight:600;letter-spacing:.65px}
+    label,.stat-title,.metric-label,.sync-mini .label{font-weight:600}
+
+    @media(max-width:960px){
+      .channel-hero-content{padding:36px 34px}
+      .channel-hero-content h2{font-size:29px}
+      .poster-main strong{font-size:29px}
+      .poster-index{font-size:145px}
+    }
+    @media(max-width:720px){
+      .title-wrap h1 span{font-size:17px;letter-spacing:1.5px}
+      .title-wrap h1 small{font-size:7px}
+      #channelToolbar .channel-hero{min-height:0}
+      .channel-visual{min-height:205px}
+      .editorial-poster{height:205px;padding:20px 20px 18px}
+      .poster-meta{font-size:7.5px;letter-spacing:1px}
+      .poster-main{min-height:112px;padding-left:15px;padding-bottom:4px}
+      .poster-main strong{font-size:24px;line-height:1.1}
+      .poster-index{right:0;bottom:-15px;font-size:104px}
+      .poster-footer{gap:8px;font-size:7px;letter-spacing:.8px}
+      .poster-footer i{width:16px}
+      .channel-hero-content{padding:28px 22px 30px}
+      .channel-hero-content h2{font-size:26px;line-height:1.22}
+    }
+  </style>
 </head>
 <body>
   <section id="loginPage" class="login-page">
     <div class="login-card">
-      <div class="brand-mark">L</div>
-      <h1>Đăng nhập hệ thống Live</h1>
-      <p>Check-in bằng ảnh sẽ được tính là bắt đầu livestream. Sau check-in, ca đang hoạt động sẽ tự chuyển sang nút kết thúc ca và tính thời gian live realtime.</p>
+      <div class="brand-mark">G</div>
+      <h1>Chào mừng bạn trở lại</h1>
+      <p>Đăng nhập để quản lý ca live, theo dõi doanh thu và đồng hành cùng đội ngũ Mẹ &amp; Bé mỗi ngày.</p>
       <div class="form-field">
         <label>Tài khoản</label>
-        <input id="loginUsername" placeholder="admin / host1 / tro1"/>
+        <input id="loginUsername" placeholder="admin / host1 / tro1" autocomplete="username"/>
       </div>
       <div class="form-field">
         <label>Mật khẩu</label>
-        <input id="loginPassword" type="password" placeholder="Nhập mật khẩu"/>
+        <input id="loginPassword" type="password" placeholder="Nhập mật khẩu" autocomplete="current-password"/>
       </div>
-      <button style="width:100%;margin-top:6px" onclick="login()">Đăng nhập</button>
+      <button type="button" style="width:100%;margin-top:6px" onclick="login()">Đăng nhập</button>
       <div class="warning-note">
         Tài khoản test: <b>admin / live123</b>, <b>host1 / 123456</b>, <b>tro1 / 123456</b>.<br/>
         Bản Cloud: dữ liệu sẽ đồng bộ giữa nhiều máy khi bạn điền firebaseConfig. Nếu chưa điền Firebase, hệ thống tự chạy chế độ LocalStorage dự phòng.
@@ -344,9 +1120,9 @@
     <header>
       <div class="header-wrap">
         <div class="header-brand">
-          <div class="header-mark">L</div>
+          <div class="header-mark" aria-hidden="true">G</div>
           <div class="title-wrap">
-            <h1>Quản lý ca live realtime</h1>
+            <h1><span>GOOBY</span><small>MẸ &amp; BÉ</small></h1>
             <div id="headerSubtitle">Dashboard vận hành host live và trợ live</div>
           </div>
         </div>
@@ -361,7 +1137,7 @@
     <div class="app-body">
       <aside class="sidebar">
         <div class="sidebar-label">Điều hướng</div>
-        <nav class="tabs" id="tabs"></nav>
+        <nav class="tabs" id="tabs" aria-label="Điều hướng chính"></nav>
       </aside>
       <main>
       <div id="channelToolbar"></div>
@@ -372,7 +1148,7 @@
         <div class="section-head">
           <div>
             <h2>Ca live đang hoạt động</h2>
-            <p>Hiển thị tên host live, trợ live, trạng thái check-in và thời gian live realtime.</p>
+            <p>Hiển thị tên host live, trợ live, trạng thái check-in và thời gian live theo thời gian thực.</p>
           </div>
           <div class="toolbar">
             <button onclick="openShiftModal()">+ Đăng ký ca live</button>
@@ -705,7 +1481,7 @@
         <div>
           <canvas id="cameraCanvas"></canvas>
           <div class="warning-note">
-            Sau khi xác nhận check-in, ca live sẽ chuyển sang <b>đang hoạt động</b> và bắt đầu tính thời gian realtime cho đúng người check-in.
+            Sau khi xác nhận check-in, ca live sẽ chuyển sang <b>đang hoạt động</b> và bắt đầu tính thời gian theo thời gian thực cho đúng người check-in.
           </div>
         </div>
       </div>
@@ -829,7 +1605,7 @@
     </div>
   </div>
 
-  <div id="toast" class="toast"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
@@ -1270,7 +2046,7 @@
       document.getElementById("appPage").classList.remove("hidden");
       document.getElementById("currentUserPill").textContent = `${currentUser.name} · ${roleLabel(currentUser.role)}`;
       document.getElementById("headerSubtitle").textContent = (isAdmin()
-        ? "Admin quản lý tài khoản, đăng ký ca live, báo cáo realtime"
+        ? "Admin quản lý tài khoản, đăng ký ca live và báo cáo theo thời gian thực"
         : "Nhân viên check-in để bắt đầu live, kết thúc để chốt thời gian thực tế") + " · " + cloudStatusText();
       renderTabs();
       switchView(activeView);
@@ -1280,11 +2056,11 @@
     function renderTabs(){
       const pendingCount = pendingReportEditRequests().length;
       const tabs = isAdmin()
-        ? [["dashboard","Dashboard realtime"],["register","Đăng ký ca live"],["accounts","Tài khoản"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["shopee","Kết nối Shopee"],["approvals",`Duyệt sửa báo cáo${pendingCount ? " ("+pendingCount+")" : ""}`],["history","Lịch sử chỉnh sửa"]]
+        ? [["dashboard","Tổng quan"],["register","Đăng ký ca live"],["accounts","Tài khoản"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["shopee","Kết nối Shopee"],["approvals",`Duyệt sửa báo cáo${pendingCount ? " ("+pendingCount+")" : ""}`],["history","Lịch sử chỉnh sửa"]]
         : [["myshift","Ca live của tôi"],["register","Đăng ký ca live"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["history","Lịch sử chỉnh sửa"]];
       if(!tabs.some(t=>t[0] === activeView)) activeView = tabs[0][0];
       document.getElementById("tabs").innerHTML = tabs.map(t=>`
-        <button class="tab ${activeView===t[0]?"active":""}" onclick="switchView('${t[0]}')">${t[1]}</button>
+        <button class="tab ${activeView===t[0]?"active":""}" data-view="${t[0]}" aria-current="${activeView===t[0]?"page":"false"}" onclick="switchView('${t[0]}')">${t[1]}</button>
       `).join("");
     }
 
@@ -1354,23 +2130,48 @@
       const total = selectedChannel === "all" ? baseShifts.length : baseShifts.filter(s=>s.shop === selectedChannel).length;
       const active = baseShifts.filter(s=>computeShiftStatus(s).value === "active" && (selectedChannel === "all" || s.shop === selectedChannel)).length;
       const reported = baseShifts.filter(s=>s.report && (selectedChannel === "all" || s.shop === selectedChannel)).length;
-      wrap.innerHTML = `
-        <div class="card" style="margin-bottom:16px">
-          <div class="section-head" style="margin:0;align-items:center">
+      const channelSelect = `
+        <select id="channelFilterSelect" aria-label="Lọc theo kênh bán" onchange="setChannelFilter(this.value)">
+          <option value="all" ${selectedChannel==="all"?"selected":""}>Tất cả kênh bán</option>
+          ${getChannels().map(ch=>`<option value="${ch}" ${selectedChannel===ch?"selected":""}>${ch}</option>`).join("")}
+        </select>
+      `;
+
+      if(activeView === "dashboard"){
+        wrap.innerHTML = `
+          <div class="card channel-hero">
+            <div class="channel-visual" aria-hidden="true">
+              <div class="editorial-poster">
+                <div class="poster-meta"><span>GOOBY</span><span>LIVE OPERATIONS / 2026</span></div>
+                <div class="poster-main"><span class="poster-index">01</span><strong>MẸ &amp; BÉ<br/>LIVE COMMERCE</strong></div>
+                <div class="poster-footer"><span>DỮ LIỆU</span><i></i><span>NHÂN SỰ</span><i></i><span>DOANH THU</span></div>
+              </div>
+            </div>
+            <div class="channel-hero-content">
+              <div class="hero-eyebrow">TỔNG QUAN VẬN HÀNH</div>
+              <h2>Theo dõi ca live theo từng kênh bán</h2>
+              <p>Đang theo dõi <b>${total}</b> ca live · <b>${active}</b> ca đang hoạt động · <b>${reported}</b> ca đã báo cáo.</p>
+              <div class="hero-toolbar">
+                ${channelSelect}
+                ${isAdmin()?`<button class="secondary" onclick="openChannelModal()">+ Thêm kênh bán</button>`:""}
+              </div>
+            </div>
+          </div>
+        `;
+      }else{
+        wrap.innerHTML = `
+          <div class="card channel-filter-compact">
             <div>
-              <h2 style="font-size:18px">Lọc theo kênh bán</h2>
-              <p>Kênh đang chọn có <b>${total}</b> ca live, <b>${active}</b> ca đang hoạt động, <b>${reported}</b> ca đã báo cáo.</p>
+              <div class="hero-eyebrow">KÊNH BÁN ĐANG XEM</div>
+              <p><b>${total}</b> ca live · <b>${active}</b> đang hoạt động · <b>${reported}</b> đã báo cáo</p>
             </div>
             <div class="toolbar">
-              <select id="channelFilterSelect" style="min-width:220px" onchange="setChannelFilter(this.value)">
-                <option value="all" ${selectedChannel==="all"?"selected":""}>Tất cả kênh bán</option>
-                ${getChannels().map(ch=>`<option value="${ch}" ${selectedChannel===ch?"selected":""}>${ch}</option>`).join("")}
-              </select>
+              ${channelSelect}
               ${isAdmin()?`<button class="secondary" onclick="openChannelModal()">+ Thêm kênh bán</button>`:""}
             </div>
           </div>
-        </div>
-      `;
+        `;
+      }
     }
 
     function setChannelFilter(value){
@@ -1548,11 +2349,11 @@
     }
 
     function shopeeSyncFreshness(ts){
-      if(!ts) return {label:"Chưa có sync", color:"gray", pulse:"off", note:"Chưa nhận dữ liệu từ Worker/Shopee"};
+      if(!ts) return {label:"Chưa đồng bộ", color:"gray", pulse:"off", note:"Chưa nhận dữ liệu từ Worker/Shopee"};
       const age = Date.now() - Number(ts);
-      if(age <= 90*1000) return {label:"Đang realtime", color:"green", pulse:"", note:"Dữ liệu vừa cập nhật từ sàn"};
+      if(age <= 90*1000) return {label:"Đang cập nhật", color:"green", pulse:"", note:"Dữ liệu vừa cập nhật từ sàn"};
       if(age <= 5*60*1000) return {label:"Độ trễ nhẹ", color:"yellow", pulse:"warn", note:"Cron/Worker vẫn trong vùng chấp nhận"};
-      return {label:"Chậm sync", color:"red", pulse:"error", note:"Nên kiểm tra Worker, Cron hoặc kết nối Shopee"};
+      return {label:"Đồng bộ chậm", color:"red", pulse:"error", note:"Nên kiểm tra Worker, Cron hoặc kết nối Shopee"};
     }
 
     function nextShopeeSyncText(ts){
@@ -1560,7 +2361,7 @@
       if(!ts) return "Đang chờ lần đầu";
       const next = Number(ts) + interval;
       const remain = Math.ceil((next - Date.now())/1000);
-      if(remain <= 0) return "Đang tới lượt sync";
+      if(remain <= 0) return "Đang đến lượt đồng bộ";
       return `Còn khoảng ${remain}s`;
     }
 
@@ -1598,12 +2399,12 @@
         <div class="card sync-panel">
           <div class="section-head" style="margin:0;align-items:center">
             <div>
-              <h2 style="font-size:18px"><span class="sync-pulse ${fresh.pulse}"></span>Thời gian thực đồng bộ từ Shopee xuống dashboard</h2>
+              <h2 style="font-size:18px"><span class="sync-pulse ${fresh.pulse}"></span>Đồng bộ dữ liệu Shopee theo thời gian thực</h2>
               <p><b>${fresh.label}</b> · Lần nhận dữ liệu gần nhất: <b>${latestTs ? relativeTimeFromMs(latestTs) : "Chưa có"}</b> · Lần Worker/Cron gần nhất: <b>${escapeHtml(db.settings?.shopeeLastWorkerSyncAt || "Chưa có")}</b></p>
               <p>${fresh.note}. Dữ liệu đi theo luồng: <b>Shopee → Worker → Firebase → Dashboard</b>. Khi Firebase nhận dữ liệu mới, tất cả thiết bị đang mở web sẽ tự cập nhật.</p>
             </div>
             <div class="toolbar">
-              <button class="green" onclick="runShopeeAutoSyncNow(false)">Sync ngay</button>
+              <button class="green" onclick="runShopeeAutoSyncNow(false)">Đồng bộ ngay</button>
               <button class="secondary" onclick="switchView('shopee')">Xem giám sát Shopee</button>
             </div>
           </div>
@@ -1611,15 +2412,15 @@
             <div class="sync-mini"><div class="label">Trạng thái Worker</div><div class="value">${endpoint ? "Đã cấu hình" : "Chưa có"}</div><div class="meta">${endpoint ? "Endpoint đã lưu" : "Cần cấu hình Worker"}</div></div>
             <div class="sync-mini"><div class="label">Shop đã kết nối</div><div class="value">${connectedCount}/${channels.length}</div><div class="meta">Theo kênh bán trên dashboard</div></div>
             <div class="sync-mini"><div class="label">Ca đang kéo từ sàn</div><div class="value">${candidates.length}</div><div class="meta">${activeCandidates.length} ca đang live · ${updatedCount} ca đã có dữ liệu</div></div>
-            <div class="sync-mini"><div class="label">Lượt sync tiếp theo</div><div class="value" style="font-size:18px">${nextShopeeSyncText(latestTs)}</div><div class="meta">Cron/auto loop ước tính mỗi ${Math.round(Number(db?.settings?.shopeeSyncIntervalMs || SHOPEE_AUTO_SYNC_INTERVAL_MS)/1000)}s</div></div>
+            <div class="sync-mini"><div class="label">Lần đồng bộ tiếp theo</div><div class="value" style="font-size:18px">${nextShopeeSyncText(latestTs)}</div><div class="meta">Chu kỳ tự động khoảng ${Math.round(Number(db?.settings?.shopeeSyncIntervalMs || SHOPEE_AUTO_SYNC_INTERVAL_MS)/1000)} giây</div></div>
             <div class="sync-mini"><div class="label">GMV Shopee đã nhận</div><div class="value">${money(shopeeGMV)}</div><div class="meta">Theo kênh đang lọc</div></div>
             <div class="sync-mini"><div class="label">Đơn Shopee đã nhận</div><div class="value">${shopeeOrders.toLocaleString("vi-VN")}</div><div class="meta">Theo kênh đang lọc</div></div>
-            <div class="sync-mini"><div class="label">Lỗi sync</div><div class="value">${errorCount}</div><div class="meta">Xem tab Kết nối Shopee để biết chi tiết</div></div>
-            <div class="sync-mini"><div class="label">Nguồn dữ liệu</div><div class="value" style="font-size:18px">Live Session</div><div class="meta">Ưu tiên Live ID; fallback tùy cấu hình Worker</div></div>
+            <div class="sync-mini"><div class="label">Lỗi đồng bộ</div><div class="value">${errorCount}</div><div class="meta">Xem tab Kết nối Shopee để biết chi tiết</div></div>
+            <div class="sync-mini"><div class="label">Nguồn dữ liệu</div><div class="value" style="font-size:18px">Phiên Live</div><div class="meta">Ưu tiên Live ID; dùng phương án dự phòng theo cấu hình Worker</div></div>
           </div>
           <div class="table-scroll" style="margin-top:12px">
             <table>
-              <thead><tr><th>Ca/kênh đang theo dõi</th><th>Dữ liệu live Shopee</th><th>Trạng thái realtime</th><th>Shop</th></tr></thead>
+              <thead><tr><th>Ca/kênh đang theo dõi</th><th>Dữ liệu live Shopee</th><th>Trạng thái trực tiếp</th><th>Shop</th></tr></thead>
               <tbody>${liveRows || `<tr><td colspan="4">Chưa có ca nào trong vùng đồng bộ. Khi có ca live/check-in, dữ liệu Shopee sẽ hiện ở đây.</td></tr>`}</tbody>
             </table>
           </div>
@@ -1670,7 +2471,7 @@
       const aov = report.aov || (report.orders ? Math.round(report.gmv / report.orders) : 0);
 
       let alertColor = "gray", alertText = "Ca chưa check-in.";
-      if(st.value === "active"){ alertColor = "green"; alertText = "Ca live đang hoạt động, thời gian đang được tính realtime."; }
+      if(st.value === "active"){ alertColor = "green"; alertText = "Ca live đang hoạt động, thời gian đang được tính theo thời gian thực."; }
       if(st.value === "ended"){ alertColor = "blue"; alertText = "Ca live đã kết thúc, có thể nhập báo cáo sau live."; }
       if(st.value === "reported"){ alertColor = "purple"; alertText = "Ca đã có báo cáo sau live."; }
       const pendingReq = currentUser ? getPendingReportEditRequest(shift.id, isAdmin() ? "" : currentUser.id) : null;
@@ -2983,7 +3784,7 @@
       saveDB({immediate:true});
       closeCheckinModal();
       renderContent();
-      toast("Đã bắt đầu live và tính giờ realtime");
+        toast("Đã bắt đầu live và tính giờ theo thời gian thực");
     }
 
     function openEndModal(shiftId, role){
@@ -3110,7 +3911,7 @@
       if(!db.settings) db.settings = {};
       const current = getShopeeSyncEndpoint();
       const value = prompt(
-        "Nhập URL Cloudflare Worker Shopee OAuth.\nVí dụ: https://shopee-sync.tenmiencuaban.workers.dev\n\nV20 không cần nhập SHOPEE_SHOPS_JSON thủ công. Sau khi lưu endpoint, vào tab Kết nối Shopee để bấm kết nối từng kênh bán, nhập Live ID khi check-in và theo dõi log đồng bộ.",
+        "Nhập URL Cloudflare Worker Shopee OAuth.\nVí dụ: https://shopee-sync.tenmiencuaban.workers.dev\n\nV20 không cần nhập SHOPEE_SHOPS_JSON thủ công. Sau khi lưu endpoint, vào tab Kết nối Shopee để bấm kết nối từng kênh bán, nhập Live ID khi check-in và theo dõi nhật ký đồng bộ.",
         current
       );
       if(value === null) return;
@@ -3165,6 +3966,7 @@
     function renderShopeeAutoSyncPanel(){
       const wrap = document.getElementById("shopeeAutoSyncPanel");
       if(!wrap) return;
+      if(!isAdmin()){ wrap.innerHTML = ""; return; }
       const endpoint = getShopeeSyncEndpoint();
       const candidates = shopeeCandidateShifts();
       const enabled = !!(db?.settings?.shopeeAutoSyncEnabled && endpoint);
@@ -3266,7 +4068,7 @@
         </div>
         <div class="table-scroll">
           <table>
-            <thead><tr><th>Kênh bán</th><th>Trạng thái</th><th>Shop ID</th><th>User ID</th><th>Tên shop</th><th>Ngày kết nối</th><th>Lần sync cuối</th><th>Thao tác</th></tr></thead>
+            <thead><tr><th>Kênh bán</th><th>Trạng thái</th><th>Shop ID</th><th>User ID</th><th>Tên shop</th><th>Ngày kết nối</th><th>Lần đồng bộ cuối</th><th>Thao tác</th></tr></thead>
             <tbody>${rows || `<tr><td colspan="8">Chưa có kênh bán</td></tr>`}</tbody>
           </table>
         </div>
@@ -3299,11 +4101,11 @@
       if(!s || !s.shop) return {label:"Thiếu kênh", color:"red", note:"Ca live chưa có kênh bán."};
       if(!conn) return {label:"Chưa kết nối", color:"gray", note:"Kênh này chưa ủy quyền shop Shopee."};
       if(shopeeConnectionStatusText(conn) !== "Đã kết nối") return {label:shopeeConnectionStatusText(conn), color:"red", note:conn.lastError || "Token chưa hợp lệ hoặc đã hết hạn."};
-      if(sm.lastError) return {label:"Lỗi sync", color:"red", note:sm.lastError};
-      if(!shouldAutoSyncShopeeShift(s)) return {label:"Ngoài vùng sync", color:"gray", note:"Ca chưa tới giờ, đã quá cũ hoặc khung giờ chưa hợp lệ."};
-      if(sm.syncedAt) return {label:"Đã sync", color:"green", note:`Cập nhật cuối: ${sm.syncedAt}`};
+      if(sm.lastError) return {label:"Lỗi đồng bộ", color:"red", note:sm.lastError};
+      if(!shouldAutoSyncShopeeShift(s)) return {label:"Ngoài vùng đồng bộ", color:"gray", note:"Ca chưa tới giờ, đã quá cũ hoặc khung giờ chưa hợp lệ."};
+      if(sm.syncedAt) return {label:"Đã đồng bộ", color:"green", note:`Cập nhật cuối: ${sm.syncedAt}`};
       if(s.shopeeLiveId) return {label:"Chờ dữ liệu live", color:"yellow", note:`Đã có Live ID ${s.shopeeLiveId}. Worker sẽ ưu tiên lấy dữ liệu riêng phiên live.`};
-      return {label:"Chờ sync", color:"yellow", note:"Worker sẽ tự đồng bộ theo Cron hoặc admin bấm Sync ca."};
+      return {label:"Chờ đồng bộ", color:"yellow", note:"Worker sẽ tự đồng bộ theo Cron hoặc admin bấm Đồng bộ ca."};
     }
 
     function shopeeLogs(){
@@ -3349,7 +4151,7 @@
             <td>${money(r.gmv || 0)}<br/><span class="meta">${Number(r.orders || 0).toLocaleString("vi-VN")} đơn · View: ${Number(r.view || 0).toLocaleString("vi-VN")}</span><br/><span class="meta">CCU: ${Number(matched.ccu || 0).toLocaleString("vi-VN")} · Peak: ${Number(matched.peakCcu || 0).toLocaleString("vi-VN")} · Like: ${Number(matched.likes || 0).toLocaleString("vi-VN")} · Share: ${Number(matched.shares || 0).toLocaleString("vi-VN")}</span>${staleNote}</td>
             <td><span class="badge ${syncState.color}">${syncState.label}</span><br/><span class="meta">${escapeHtml(syncState.note || "-")}</span></td>
             <td>
-              <button class="small green" onclick="syncShopeeShiftById('${s.id}')">Sync ca</button>
+              <button class="small green" onclick="syncShopeeShiftById('${s.id}')">Đồng bộ ca</button>
               <button class="small secondary" onclick="openReportModal('${s.id}')">Xem báo cáo</button>
             </td>
           </tr>
@@ -3360,9 +4162,9 @@
         <div class="grid stats-grid" style="margin:16px 0">
           <div class="card"><div class="stat-title">Endpoint Worker</div><div class="stat-value" style="font-size:18px">${endpoint ? "Đã cấu hình" : "Chưa có"}</div><div class="stat-note">${endpoint || "Bấm Cấu hình Worker"}</div></div>
           <div class="card"><div class="stat-title">Shop đã kết nối</div><div class="stat-value">${connectedCount}/${channels.length}</div><div class="stat-note">Theo kênh bán trong dashboard</div></div>
-          <div class="card"><div class="stat-title">Ca trong vùng sync</div><div class="stat-value">${candidates.length}</div><div class="stat-note">Dựa theo giờ check-in/end hoặc giờ dự kiến</div></div>
+          <div class="card"><div class="stat-title">Ca trong vùng đồng bộ</div><div class="stat-value">${candidates.length}</div><div class="stat-note">Dựa theo giờ check-in/end hoặc giờ dự kiến</div></div>
           <div class="card"><div class="stat-title">Ca đã có dữ liệu Shopee</div><div class="stat-value">${synced}</div><div class="stat-note">GMV/đơn đã được kéo về</div></div>
-          <div class="card"><div class="stat-title">Lỗi sync</div><div class="stat-value">${errorCount}</div><div class="stat-note">Xem cột trạng thái/log bên dưới</div></div>
+          <div class="card"><div class="stat-title">Lỗi đồng bộ</div><div class="stat-value">${errorCount}</div><div class="stat-note">Xem cột trạng thái/nhật ký bên dưới</div></div>
         </div>
         <div class="card" style="margin-bottom:16px">
           <div class="section-head" style="margin-top:0">
@@ -3372,13 +4174,13 @@
               <p>Worker gần nhất: <b>${escapeHtml(db.settings?.shopeeLastWorkerSyncAt || "Chưa có")}</b> · ${escapeHtml(db.settings?.shopeeLastWorkerSyncSummary || "Chưa có kết quả")}</p>
             </div>
             <div class="toolbar">
-              <button class="green" onclick="runShopeeAutoSyncNow(false)">Sync tất cả ca cần đồng bộ</button>
+              <button class="green" onclick="runShopeeAutoSyncNow(false)">Đồng bộ tất cả ca cần xử lý</button>
               <button class="secondary" onclick="refreshShopeeConnections()">Refresh kết nối</button>
             </div>
           </div>
           <div class="table-scroll">
             <table>
-              <thead><tr><th>Ngày</th><th>Kênh/Shop</th><th>Nhân sự</th><th>Ca</th><th>Khung giờ lấy đơn</th><th>GMV/Đơn Shopee</th><th>Trạng thái sync</th><th>Thao tác</th></tr></thead>
+              <thead><tr><th>Ngày</th><th>Kênh/Shop</th><th>Nhân sự</th><th>Ca</th><th>Khung giờ lấy đơn</th><th>GMV/Đơn Shopee</th><th>Trạng thái đồng bộ</th><th>Thao tác</th></tr></thead>
               <tbody>${rows || `<tr><td colspan="8">Chưa có ca live nào.</td></tr>`}</tbody>
             </table>
           </div>
@@ -3403,7 +4205,7 @@
                   <td><strong>${escapeHtml(l.action || "-")}</strong><br/><span class="meta">${escapeHtml(l.actor || "Worker")}</span></td>
                   <td><pre style="white-space:pre-wrap;margin:0;font-family:inherit;font-size:12px">${escapeHtml(JSON.stringify(l.details || {}, null, 2))}</pre></td>
                 </tr>
-              `).join("") : `<tr><td colspan="3">Chưa có log Shopee. Hãy bấm Sync tất cả hoặc chờ Cron chạy.</td></tr>`}</tbody>
+              `).join("") : `<tr><td colspan="3">Chưa có nhật ký Shopee. Hãy bấm Đồng bộ tất cả hoặc chờ Cron chạy.</td></tr>`}</tbody>
             </table>
           </div>
         </div>
@@ -3418,15 +4220,15 @@
         const didChange = await syncShopeeMetricsForShift(s, {silent:false});
         await saveDB({immediate:true});
         renderContent();
-        toast(didChange ? "Đã sync Shopee cho ca này" : "Đã kiểm tra Shopee, dữ liệu chưa thay đổi");
+        toast(didChange ? "Đã đồng bộ Shopee cho ca này" : "Đã kiểm tra Shopee, dữ liệu chưa thay đổi");
       }catch(e){
         if(!s.shopeeMetrics) s.shopeeMetrics = {};
         s.shopeeMetrics.lastError = e.message;
         s.shopeeMetrics.syncedAt = nowText();
-        recordDatabaseEvent({module:"shopee_auto_sync", action:"Lỗi sync Shopee cho ca", shift:s, details:{channel:s.shop, error:e.message}});
+        recordDatabaseEvent({module:"shopee_auto_sync", action:"Lỗi đồng bộ Shopee cho ca", shift:s, details:{channel:s.shop, error:e.message}});
         await saveDB({immediate:true});
         renderContent();
-        toast("Sync ca lỗi: " + e.message);
+        toast("Đồng bộ ca bị lỗi: " + e.message);
       }
     }
 
@@ -3821,7 +4623,7 @@
           </style>
         </head>
         <body>
-          <h2>Báo cáo live realtime</h2>
+          <h2>Báo cáo live theo thời gian thực</h2>
           <table>
             <thead>
               <tr>${headers.map(h=>`<th>${escapeHtml(h)}</th>`).join("")}</tr>
