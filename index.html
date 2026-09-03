@@ -1946,11 +1946,8 @@
       if(!account || account.role !== "support") return "Chỉ tài khoản trợ live được tham gia ca";
       if(!shift) return "Không tìm thấy ca live";
       if(shift.supportId) return shift.supportId === account.id ? "Bạn đã tham gia ca này" : "Ca đã có trợ live";
-      if(!accountCanHandleShop(account, shift.shop)) return "Bạn chưa được phân quyền kênh bán này";
       const status = computeShiftStatus(shift).value;
       if(status === "ended" || status === "reported" || shift.host?.endTs) return "Ca live đã kết thúc";
-      const range = shiftScheduledRangeMs(shift);
-      if(status !== "active" && range && range.end < Date.now()) return "Ca live đã qua thời gian đăng ký";
       const conflict = supportScheduleConflict(shift, account.id, shifts);
       if(conflict) return `Trùng lịch với ca ${conflict.date} · ${conflict.start}-${conflict.end} · ${conflict.shop || "Khác"}`;
       return "";
@@ -1958,11 +1955,9 @@
 
     function isOpenShiftForSupport(shift, account=currentUser){
       if(!account || account.role !== "support" || !shift || shift.supportId) return false;
-      if(!accountCanHandleShop(account, shift.shop)) return false;
       const status = computeShiftStatus(shift).value;
       if(status === "ended" || status === "reported" || shift.host?.endTs) return false;
-      const range = shiftScheduledRangeMs(shift);
-      return status === "active" || !range || range.end >= Date.now();
+      return status === "scheduled" || status === "active";
     }
 
     function appendSupportJoinLog(targetDb, shift, account, storage){
@@ -2587,7 +2582,7 @@
       const description = document.getElementById("myShiftDescription");
       if(isSupportAccount()){
         if(title) title.textContent = "Ca của tôi & ca đang cần trợ live";
-        if(description) description.textContent = "Bạn có thể tham gia ca do host đăng ký nếu ca chưa có trợ live, đúng kênh được phân quyền và không trùng lịch.";
+        if(description) description.textContent = "Bạn có thể tham gia mọi ca do admin hoặc host đăng ký nếu ca chưa có trợ live và không trùng lịch với ca đã nhận.";
       }else{
         if(title) title.textContent = "Ca live của tôi";
         if(description) description.textContent = "Chụp check-in để bắt đầu live, sau đó kết thúc ca để hệ thống chốt thời gian thực tế.";
@@ -2610,6 +2605,10 @@
       if(st.value === "active"){ alertColor = "green"; alertText = "Ca live đang hoạt động, thời gian đang được tính theo thời gian thực."; }
       if(st.value === "ended"){ alertColor = "blue"; alertText = "Ca live đã kết thúc, có thể nhập báo cáo sau live."; }
       if(st.value === "reported"){ alertColor = "purple"; alertText = "Ca đã có báo cáo sau live."; }
+      if(isSupportAccount() && !hasSupport && isOpenShiftForSupport(shift)){
+        alertColor = "blue";
+        alertText = "Ca này đang chưa có trợ live. Bạn có thể đăng ký tham gia.";
+      }
       const pendingReq = currentUser ? getPendingReportEditRequest(shift.id, isAdmin() ? "" : currentUser.id) : null;
 
       const roleActions = [];
