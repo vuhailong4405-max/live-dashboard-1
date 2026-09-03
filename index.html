@@ -1,11 +1,11 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="vi">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gooby Mẹ &amp; Bé – Vận hành Live</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
   <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500&amp;display=swap" rel="stylesheet">
   <style>
     :root{
@@ -1102,15 +1102,15 @@
       <p>Đăng nhập để quản lý ca live, theo dõi doanh thu và đồng hành cùng đội ngũ Mẹ &amp; Bé mỗi ngày.</p>
       <div class="form-field">
         <label>Tài khoản</label>
-        <input id="loginUsername" placeholder="admin / host1 / tro1" autocomplete="username"/>
+        <input id="loginUsername" placeholder="admin / host1 / tro1" autocomplete="username">
       </div>
       <div class="form-field">
         <label>Mật khẩu</label>
-        <input id="loginPassword" type="password" placeholder="Nhập mật khẩu" autocomplete="current-password"/>
+        <input id="loginPassword" type="password" placeholder="Nhập mật khẩu" autocomplete="current-password">
       </div>
       <button type="button" style="width:100%;margin-top:6px" onclick="login()">Đăng nhập</button>
       <div class="warning-note">
-        Tài khoản test: <b>admin / live123</b>, <b>host1 / 123456</b>, <b>tro1 / 123456</b>.<br/>
+        Tài khoản test: <b>admin / live123</b>, <b>host1 / 123456</b>, <b>tro1 / 123456</b>.<br>
         Bản Cloud: dữ liệu sẽ đồng bộ giữa nhiều máy khi bạn điền firebaseConfig. Nếu chưa điền Firebase, hệ thống tự chạy chế độ LocalStorage dự phòng.
       </div>
     </div>
@@ -1127,7 +1127,7 @@
           </div>
         </div>
         <div class="user-box">
-          <div class="user-pill" id="clockPill">--:--:--</div>
+          <div class="user-pill" id="clockPill">17:12:51 03/09/2026</div>
           <div class="user-pill" id="currentUserPill">---</div>
           <button class="secondary" onclick="logout()">Đăng xuất</button>
         </div>
@@ -1162,8 +1162,8 @@
       <section id="view-myshift" class="view">
         <div class="section-head">
           <div>
-            <h2>Ca live của tôi</h2>
-            <p>Chụp check-in để bắt đầu live, sau đó kết thúc ca để hệ thống chốt thời gian thực tế.</p>
+            <h2 id="myShiftTitle">Ca live của tôi</h2>
+            <p id="myShiftDescription">Chụp check-in để bắt đầu live, sau đó kết thúc ca để hệ thống chốt thời gian thực tế.</p>
           </div>
         </div>
         <div id="myShiftGrid" class="grid live-grid"></div>
@@ -1286,7 +1286,7 @@
       <section id="view-history" class="view">
         <div class="section-head">
           <div>
-            <h2>Lịch sử chỉnh sửa & lưu trữ database</h2>
+            <h2>Lịch sử chỉnh sửa &amp; lưu trữ database</h2>
             <p>Lưu lại từng lần sửa ca live, sửa báo cáo, thay đổi tài khoản và toàn bộ thông tin nhân viên nhập.</p>
           </div>
         </div>
@@ -1308,7 +1308,7 @@
       <div class="form-grid two">
         <div class="form-field">
           <label>Tên kênh bán mới</label>
-          <input id="newChannelName" placeholder="Ví dụ: Gooby TikTok, Rouya Shopee, Lazada..." onkeydown="if(event.key==='Enter'){saveNewChannel()}"/>
+          <input id="newChannelName" placeholder="Ví dụ: Gooby TikTok, Rouya Shopee, Lazada..." onkeydown="if(event.key==='Enter'){saveNewChannel()}">
         </div>
         <div class="form-field">
           <label>&nbsp;</label>
@@ -1337,19 +1337,19 @@
         </div>
         <button class="close" onclick="closeModal('accountModal')">×</button>
       </div>
-      <input type="hidden" id="accountId"/>
+      <input type="hidden" id="accountId">
       <div class="form-grid two">
         <div class="form-field">
           <label>Họ tên</label>
-          <input id="accountName" placeholder="Ví dụ: Nguyễn A"/>
+          <input id="accountName" placeholder="Ví dụ: Nguyễn A">
         </div>
         <div class="form-field">
           <label>Tên đăng nhập</label>
-          <input id="accountUsername" placeholder="Ví dụ: host01"/>
+          <input id="accountUsername" placeholder="Ví dụ: host01">
         </div>
         <div class="form-field">
           <label>Mật khẩu</label>
-          <input id="accountPassword" type="password" placeholder="Để trống nếu không đổi khi sửa"/>
+          <input id="accountPassword" type="password" placeholder="Để trống nếu không đổi khi sửa">
         </div>
         <div class="form-field">
           <label>Vai trò</label>
@@ -1361,7 +1361,7 @@
         </div>
         <div class="form-field">
           <label>Shop phụ trách <span class="meta">(có thể chọn nhiều)</span></label>
-          <select id="accountShop" multiple size="5"></select>
+          <select id="accountShop" multiple="" size="5"></select>
           <div class="meta" style="margin-top:6px">Giữ Ctrl/Command để chọn nhiều shop. Chọn “Tất cả kênh” nếu tài khoản phụ trách toàn bộ shop.</div>
         </div>
         <div class="form-field">
@@ -1373,7 +1373,7 @@
         </div>
         <div class="form-field">
           <label>KPI GMV cá nhân</label>
-          <input id="accountKpiGmv" type="number" min="0" placeholder="Ví dụ: 50000000"/>
+          <input id="accountKpiGmv" type="number" min="0" placeholder="Ví dụ: 50000000">
         </div>
       </div>
       <div class="actions">
@@ -1391,19 +1391,19 @@
         </div>
         <button class="close" onclick="closeModal('shiftModal')">×</button>
       </div>
-      <input type="hidden" id="shiftId"/>
+      <input type="hidden" id="shiftId">
       <div class="form-grid three">
         <div class="form-field">
           <label>Ngày live</label>
-          <input id="shiftDate" type="date"/>
+          <input id="shiftDate" type="date">
         </div>
         <div class="form-field">
           <label>Giờ bắt đầu dự kiến</label>
-          <input id="shiftStart" type="time"/>
+          <input id="shiftStart" type="time">
         </div>
         <div class="form-field">
           <label>Giờ kết thúc dự kiến</label>
-          <input id="shiftEnd" type="time"/>
+          <input id="shiftEnd" type="time">
         </div>
         <div class="form-field">
           <label>Shop / Kênh</label>
@@ -1420,7 +1420,7 @@
         </div>
         <div class="form-field">
           <label>Link phiên live Shopee / Live ID</label>
-          <input id="shiftShopeeLiveUrl" placeholder="Ví dụ: https://banhang.shopee.vn/creator-center/dashboard/live/37650484"/>
+          <input id="shiftShopeeLiveUrl" placeholder="Ví dụ: https://banhang.shopee.vn/creator-center/dashboard/live/37650484">
           <div class="meta" style="margin-top:6px">Có thể nhập link Creator Center hoặc chỉ nhập ID phiên live. Hệ thống tự tách Live ID để lấy dữ liệu đúng phiên.</div>
         </div>
       </div>
@@ -1443,7 +1443,7 @@
         </div>
         <button class="close" onclick="closeModal('liveUrlModal')">×</button>
       </div>
-      <input type="hidden" id="liveUrlShiftId"/>
+      <input type="hidden" id="liveUrlShiftId">
       <div class="warning-note">
         Dán link từ Creator Center để hệ thống lấy đúng dữ liệu riêng của phiên live, ví dụ:
         <b>https://banhang.shopee.vn/creator-center/dashboard/live/37650484</b>.
@@ -1451,7 +1451,7 @@
       </div>
       <div class="form-field" style="margin-top:14px">
         <label>Link phiên live Shopee / Live ID</label>
-        <input id="liveUrlInput" placeholder="Dán link live Shopee hoặc nhập Live ID"/>
+        <input id="liveUrlInput" placeholder="Dán link live Shopee hoặc nhập Live ID">
       </div>
       <div class="actions">
         <button class="purple" onclick="saveShiftLiveUrl()">Lưu link phiên live</button>
@@ -1468,11 +1468,11 @@
         </div>
         <button class="close" onclick="closeCheckinModal()">×</button>
       </div>
-      <input type="hidden" id="checkinShiftId"/>
-      <input type="hidden" id="checkinRole"/>
+      <input type="hidden" id="checkinShiftId">
+      <input type="hidden" id="checkinRole">
       <div class="camera-box">
         <div>
-          <video id="cameraVideo" autoplay playsinline></video>
+          <video id="cameraVideo" autoplay="" playsinline=""></video>
           <div class="actions">
             <button onclick="capturePhoto()">Chụp ảnh</button>
             <button class="gray" onclick="startCamera()">Mở lại camera</button>
@@ -1487,7 +1487,7 @@
       </div>
       <div class="form-field">
         <label>Link phiên live Shopee / Live ID</label>
-        <input id="checkinShopeeLiveUrl" placeholder="Dán link live Shopee khi bắt đầu ca, ví dụ: https://banhang.shopee.vn/creator-center/dashboard/live/37650484"/>
+        <input id="checkinShopeeLiveUrl" placeholder="Dán link live Shopee khi bắt đầu ca, ví dụ: https://banhang.shopee.vn/creator-center/dashboard/live/37650484">
         <div class="meta" style="margin-top:6px">Nên nhập tại lúc check-in để Worker lấy dữ liệu đúng phiên live, không lấy nhầm đơn ngoài live.</div>
       </div>
       <div class="form-field">
@@ -1509,8 +1509,8 @@
         </div>
         <button class="close" onclick="closeModal('endModal')">×</button>
       </div>
-      <input type="hidden" id="endShiftId"/>
-      <input type="hidden" id="endRole"/>
+      <input type="hidden" id="endShiftId">
+      <input type="hidden" id="endRole">
       <div class="warning-note" id="endDurationText">Thời gian live sẽ được chốt vào báo cáo.</div>
       <div class="form-field">
         <label>Ghi chú khi kết thúc nếu có</label>
@@ -1531,7 +1531,7 @@
         </div>
         <button class="close" onclick="closeModal('reportModal')">×</button>
       </div>
-      <input type="hidden" id="reportShiftId"/>
+      <input type="hidden" id="reportShiftId">
       <div id="reportApprovalNotice" class="warning-note hidden"></div>
       <div class="warning-note" id="shopeeSyncNotice">
         Nếu ca có Live ID, hệ thống sẽ ưu tiên lấy dữ liệu đúng phiên live Shopee gồm GMV, đơn, xu, view, CTR, CO, add to cart, bình luận và thời gian xem trung bình nếu API Live được cấp quyền. Nếu chưa có Live ID/API Live, hệ thống chỉ có thể sync dữ liệu đơn theo khung giờ.
@@ -1543,43 +1543,43 @@
       <div class="form-grid four">
         <div class="form-field">
           <label>GMV</label>
-          <input id="reportGMV" type="number" min="0" oninput="autoAOV()"/>
+          <input id="reportGMV" type="number" min="0" oninput="autoAOV()">
         </div>
         <div class="form-field">
           <label>Đơn hàng</label>
-          <input id="reportOrders" type="number" min="0" oninput="autoAOV()"/>
+          <input id="reportOrders" type="number" min="0" oninput="autoAOV()">
         </div>
         <div class="form-field">
           <label>Xu đã tung</label>
-          <input id="reportCoins" type="number" min="0"/>
+          <input id="reportCoins" type="number" min="0">
         </div>
         <div class="form-field">
           <label>CTR</label>
-          <input id="reportCTR" placeholder="Ví dụ: 8.5%"/>
+          <input id="reportCTR" placeholder="Ví dụ: 8.5%">
         </div>
         <div class="form-field">
           <label>CO</label>
-          <input id="reportCO" placeholder="Ví dụ: 3.2%"/>
+          <input id="reportCO" placeholder="Ví dụ: 3.2%">
         </div>
         <div class="form-field">
           <label>View</label>
-          <input id="reportView" type="number" min="0"/>
+          <input id="reportView" type="number" min="0">
         </div>
         <div class="form-field">
           <label>AOV</label>
-          <input id="reportAOV" type="number" min="0"/>
+          <input id="reportAOV" type="number" min="0">
         </div>
         <div class="form-field">
           <label>Lượt add to cart</label>
-          <input id="reportATC" type="number" min="0"/>
+          <input id="reportATC" type="number" min="0">
         </div>
         <div class="form-field">
           <label>Lượt bình luận</label>
-          <input id="reportComments" type="number" min="0"/>
+          <input id="reportComments" type="number" min="0">
         </div>
         <div class="form-field">
           <label>Thời gian xem trung bình</label>
-          <input id="reportAvgWatch" placeholder="Ví dụ: 1 phút 35 giây"/>
+          <input id="reportAvgWatch" placeholder="Ví dụ: 1 phút 35 giây">
         </div>
       </div>
       <div class="form-field">
@@ -1601,7 +1601,7 @@
         </div>
         <button class="close" onclick="closeModal('photoModal')">×</button>
       </div>
-      <img id="photoPreview" class="photo large" alt="Ảnh check-in"/>
+      <img id="photoPreview" class="photo large" alt="Ảnh check-in">
     </div>
   </div>
 
@@ -1911,6 +1911,7 @@
     }
 
     function isAdmin(){ return currentUser && currentUser.role === "admin"; }
+    function isSupportAccount(){ return currentUser && currentUser.role === "support"; }
     function isParticipant(shift){
       return currentUser && (shift.hostId === currentUser.id || shift.supportId === currentUser.id);
     }
@@ -1921,6 +1922,131 @@
       return "";
     }
     function roleNameInShift(role){ return role === "host" ? "Host live" : "Trợ live"; }
+
+    function shiftScheduledRangeMs(shift){
+      const start = Date.parse(`${shift?.date || ""}T${shift?.start || "00:00"}:00`);
+      let end = Date.parse(`${shift?.date || ""}T${shift?.end || "00:00"}:00`);
+      if(!Number.isFinite(start) || !Number.isFinite(end)) return null;
+      if(end <= start) end += 24 * 60 * 60 * 1000;
+      return {start,end};
+    }
+
+    function supportScheduleConflict(targetShift, accountId, shifts=db?.shifts || []){
+      const targetRange = shiftScheduledRangeMs(targetShift);
+      if(!targetRange || !accountId) return null;
+      return shifts.find(other=>{
+        if(!other || other.id === targetShift.id || other.supportId !== accountId) return false;
+        const otherRange = shiftScheduledRangeMs(other);
+        if(!otherRange) return false;
+        return targetRange.start < otherRange.end && otherRange.start < targetRange.end;
+      }) || null;
+    }
+
+    function supportOpenShiftReason(shift, account=currentUser, shifts=db?.shifts || []){
+      if(!account || account.role !== "support") return "Chỉ tài khoản trợ live được tham gia ca";
+      if(!shift) return "Không tìm thấy ca live";
+      if(shift.supportId) return shift.supportId === account.id ? "Bạn đã tham gia ca này" : "Ca đã có trợ live";
+      if(!accountCanHandleShop(account, shift.shop)) return "Bạn chưa được phân quyền kênh bán này";
+      const status = computeShiftStatus(shift).value;
+      if(status === "ended" || status === "reported" || shift.host?.endTs) return "Ca live đã kết thúc";
+      const range = shiftScheduledRangeMs(shift);
+      if(status !== "active" && range && range.end < Date.now()) return "Ca live đã qua thời gian đăng ký";
+      const conflict = supportScheduleConflict(shift, account.id, shifts);
+      if(conflict) return `Trùng lịch với ca ${conflict.date} · ${conflict.start}-${conflict.end} · ${conflict.shop || "Khác"}`;
+      return "";
+    }
+
+    function isOpenShiftForSupport(shift, account=currentUser){
+      if(!account || account.role !== "support" || !shift || shift.supportId) return false;
+      if(!accountCanHandleShop(account, shift.shop)) return false;
+      const status = computeShiftStatus(shift).value;
+      if(status === "ended" || status === "reported" || shift.host?.endTs) return false;
+      const range = shiftScheduledRangeMs(shift);
+      return status === "active" || !range || range.end >= Date.now();
+    }
+
+    function appendSupportJoinLog(targetDb, shift, account, storage){
+      if(!Array.isArray(targetDb.dataLogs)) targetDb.dataLogs = [];
+      const log = {
+        id:id(),
+        module:"shift",
+        action:"Trợ live tham gia ca",
+        employeeInput:true,
+        shiftId:shift.id,
+        shiftLabel:shiftLabel(shift),
+        accountId:account.id,
+        accountName:account.name,
+        participantIds:[...new Set([shift.hostId, account.id].filter(Boolean))],
+        before:{supportId:"",supportName:"Không có"},
+        after:{supportId:account.id,supportName:account.name},
+        details:{date:shift.date,time:`${shift.start}-${shift.end}`,shop:shift.shop},
+        actorId:account.id,
+        actorName:account.name,
+        actorRole:roleLabel(account.role),
+        time:nowText(),
+        ts:nowTs(),
+        storage
+      };
+      targetDb.dataLogs.push(log);
+      if(targetDb.dataLogs.length > 1500){
+        targetDb.dataLogs = targetDb.dataLogs.sort((a,b)=>Number(a.ts||0)-Number(b.ts||0)).slice(-1500);
+      }
+      return log;
+    }
+
+    async function joinShiftAsSupport(shiftId){
+      if(!isSupportAccount()) return toast("Chỉ tài khoản trợ live được dùng tính năng này");
+      const localShift = db.shifts.find(s=>s.id === shiftId);
+      const localReason = supportOpenShiftReason(localShift);
+      if(localReason) return toast(localReason);
+      if(!confirm(`Tham gia trợ live ca ${localShift.date} · ${localShift.start}-${localShift.end} · ${localShift.shop}?`)) return;
+
+      try{
+        if(cloudReady && cloudDB && cloudDocRef){
+          const result = await cloudDB.runTransaction(async transaction=>{
+            const snap = await transaction.get(cloudDocRef);
+            if(!snap.exists) throw new Error("Không tìm thấy dữ liệu dashboard trên Firestore");
+            const payload = snap.data() || {};
+            const remoteDb = cloneData(payload.data || {});
+            const remoteAccount = (remoteDb.accounts || []).find(a=>a.id === currentUser.id && a.role === "support" && a.status !== "inactive");
+            const remoteShift = (remoteDb.shifts || []).find(s=>s.id === shiftId);
+            if(!remoteAccount) throw new Error("Tài khoản trợ live không còn hoạt động");
+            const reason = supportOpenShiftReason(remoteShift, remoteAccount, remoteDb.shifts || []);
+            if(reason) throw new Error(reason);
+            remoteShift.supportId = remoteAccount.id;
+            remoteShift.supportName = remoteAccount.name;
+            remoteShift.support = remoteShift.support || {checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""};
+            remoteShift.supportJoinedAt = nowText();
+            remoteShift.supportJoinedTs = nowTs();
+            const log = appendSupportJoinLog(remoteDb, remoteShift, remoteAccount, "Firestore + LocalStorage cache");
+            transaction.set(cloudDocRef, {
+              data:remoteDb,
+              updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+              updatedAtText:nowText(),
+              updatedBy:remoteAccount.name
+            }, {merge:true});
+            return {remoteDb,log};
+          });
+          db = result.remoteDb;
+          applyDbDefaults();
+          localStorage.setItem(DB_KEY, JSON.stringify(db));
+          pushCloudActivityLog(result.log);
+        }else{
+          localShift.supportId = currentUser.id;
+          localShift.supportName = currentUser.name;
+          localShift.support = localShift.support || {checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""};
+          localShift.supportJoinedAt = nowText();
+          localShift.supportJoinedTs = nowTs();
+          appendSupportJoinLog(db, localShift, currentUser, "LocalStorage");
+          await saveDB({immediate:true});
+        }
+        renderContent();
+        toast("Đã tham gia ca với vai trò trợ live");
+      }catch(e){
+        console.error("Không tham gia được ca live", e);
+        toast(e?.message || "Không tham gia được ca live");
+      }
+    }
 
     function parseShopeeLiveId(value){
       const text = String(value || "").trim();
@@ -2057,7 +2183,7 @@
       const pendingCount = pendingReportEditRequests().length;
       const tabs = isAdmin()
         ? [["dashboard","Tổng quan"],["register","Đăng ký ca live"],["accounts","Tài khoản"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["shopee","Kết nối Shopee"],["approvals",`Duyệt sửa báo cáo${pendingCount ? " ("+pendingCount+")" : ""}`],["history","Lịch sử chỉnh sửa"]]
-        : [["myshift","Ca live của tôi"],["register","Đăng ký ca live"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["history","Lịch sử chỉnh sửa"]];
+        : [["myshift","Ca live của tôi"],["register",isSupportAccount() ? "Ca đang cần trợ" : "Đăng ký ca live"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["history","Lịch sử chỉnh sửa"]];
       if(!tabs.some(t=>t[0] === activeView)) activeView = tabs[0][0];
       document.getElementById("tabs").innerHTML = tabs.map(t=>`
         <button class="tab ${activeView===t[0]?"active":""}" data-view="${t[0]}" aria-current="${activeView===t[0]?"page":"false"}" onclick="switchView('${t[0]}')">${t[1]}</button>
@@ -2457,8 +2583,18 @@
 
     function renderMyShift(){
       if(isAdmin()) return;
-      const shifts = getChannelFilteredShifts(db.shifts.filter(s=>isParticipant(s))).sort((a,b)=>(b.date+b.start).localeCompare(a.date+a.start));
-      document.getElementById("myShiftGrid").innerHTML = shifts.length ? shifts.map(renderShiftCard).join("") : `<div class="empty">Bạn chưa được đăng ký ca live nào.</div>`;
+      const title = document.getElementById("myShiftTitle");
+      const description = document.getElementById("myShiftDescription");
+      if(isSupportAccount()){
+        if(title) title.textContent = "Ca của tôi & ca đang cần trợ live";
+        if(description) description.textContent = "Bạn có thể tham gia ca do host đăng ký nếu ca chưa có trợ live, đúng kênh được phân quyền và không trùng lịch.";
+      }else{
+        if(title) title.textContent = "Ca live của tôi";
+        if(description) description.textContent = "Chụp check-in để bắt đầu live, sau đó kết thúc ca để hệ thống chốt thời gian thực tế.";
+      }
+      const source = db.shifts.filter(s=>isParticipant(s) || (isSupportAccount() && isOpenShiftForSupport(s)));
+      const shifts = getChannelFilteredShifts(source).sort((a,b)=>(b.date+b.start).localeCompare(a.date+a.start));
+      document.getElementById("myShiftGrid").innerHTML = shifts.length ? shifts.map(renderShiftCard).join("") : `<div class="empty">${isSupportAccount() ? "Chưa có ca của bạn hoặc ca nào đang cần trợ live." : "Bạn chưa được đăng ký ca live nào."}</div>`;
     }
 
     function renderShiftCard(shift){
@@ -2477,6 +2613,14 @@
       const pendingReq = currentUser ? getPendingReportEditRequest(shift.id, isAdmin() ? "" : currentUser.id) : null;
 
       const roleActions = [];
+      if(isSupportAccount() && !hasSupport && isOpenShiftForSupport(shift)){
+        const joinReason = supportOpenShiftReason(shift);
+        if(joinReason){
+          roleActions.push(`<button class="small secondary" disabled title="${escapeAttr(joinReason)}">Không thể tham gia</button>`);
+        }else{
+          roleActions.push(`<button class="small green" onclick="joinShiftAsSupport('${shift.id}')">+ Tham gia trợ live</button>`);
+        }
+      }
       if((isAdmin() || myRole === "host") && canCheckin(shift,"host")){
         roleActions.push(`<button class="small green" onclick="openCheckinModal('${shift.id}','host')">Host check-in</button>`);
       }
@@ -2552,9 +2696,9 @@
 
           <div class="actions">
             ${roleActions.join("")}
-            <button class="small purple" onclick="openLiveUrlModal('${shift.id}')">${shift.shopeeLiveId ? "Sửa link live" : "Nhập link live"}</button>
-            <button class="small secondary" onclick="prepareQuickNote('${shift.id}')">Ghi chú phát sinh</button>
-            ${reportActionButton(shift)}
+            ${(isAdmin() || isParticipant(shift)) ? `<button class="small purple" onclick="openLiveUrlModal('${shift.id}')">${shift.shopeeLiveId ? "Sửa link live" : "Nhập link live"}</button>` : ""}
+            ${(isAdmin() || isParticipant(shift)) ? `<button class="small secondary" onclick="prepareQuickNote('${shift.id}')">Ghi chú phát sinh</button>` : ""}
+            ${(isAdmin() || isParticipant(shift)) ? reportActionButton(shift) : ""}
             ${isAdmin() ? `<button class="small" onclick="editShift('${shift.id}')">Sửa ca</button><button class="small red" onclick="deleteShift('${shift.id}')">Xóa</button>` : ""}
           </div>
         </div>
@@ -2562,7 +2706,9 @@
     }
 
     function renderRegisterTable(){
-      const sourceShifts = isAdmin() ? db.shifts : db.shifts.filter(s=>isParticipant(s));
+      const sourceShifts = isAdmin()
+        ? db.shifts
+        : db.shifts.filter(s=>isParticipant(s) || (isSupportAccount() && isOpenShiftForSupport(s)));
       const filtered = getChannelFilteredShifts(sourceShifts);
       if(!filtered.length){
         document.getElementById("registerTableWrap").innerHTML = `<div class="empty">Chưa có ca live nào theo kênh bán đang chọn.</div>`;
@@ -2591,7 +2737,8 @@
                 <td><span class="badge ${st.color}">${st.label}</span></td>
                 <td>${s.goal || "-"}</td>
                 <td>
-                  <button class="small purple" onclick="openLiveUrlModal('${s.id}')">${s.shopeeLiveId ? "Sửa link live" : "Nhập link live"}</button>
+                  ${isSupportAccount() && !s.supportId && isOpenShiftForSupport(s) ? (supportOpenShiftReason(s) ? `<button class="small secondary" disabled title="${escapeAttr(supportOpenShiftReason(s))}">Không thể tham gia</button>` : `<button class="small green" onclick="joinShiftAsSupport('${s.id}')">+ Tham gia trợ live</button>`) : ""}
+                  ${(isAdmin() || isParticipant(s)) ? `<button class="small purple" onclick="openLiveUrlModal('${s.id}')">${s.shopeeLiveId ? "Sửa link live" : "Nhập link live"}</button>` : ""}
                   ${isAdmin()?`<button class="small" onclick="editShift('${s.id}')">Sửa</button> <button class="small red" onclick="deleteShift('${s.id}')">Xóa</button> <button class="small secondary" onclick="openHistoryForShift('${s.id}')">Lịch sử</button>`:`<button class="small secondary" onclick="openHistoryForShift('${s.id}')">Lịch sử</button>`}
                 </td>
               </tr>`;
@@ -4689,5 +4836,7 @@
       alert("Không khởi động được hệ thống. Mở Console để xem lỗi chi tiết.");
     });
   </script>
+
+
 </body>
 </html>
