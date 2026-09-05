@@ -195,6 +195,18 @@
     .live-card.ended::before{background:linear-gradient(90deg,var(--blue),#60a5fa)}
     .live-card.reported::before{background:linear-gradient(90deg,var(--purple),#a78bfa)}
     .live-card.issue::before{background:linear-gradient(90deg,var(--red),#f87171)}
+    .live-card.campaign-spikeday{border-color:#ef4444;box-shadow:0 0 0 2px rgba(239,68,68,.12),var(--shadow)}
+    .live-card.campaign-spikeday::before{height:6px;background:#dc2626}
+    .live-card.campaign-minigame{border-color:#f59e0b;box-shadow:0 0 0 2px rgba(245,158,11,.12),var(--shadow)}
+    .live-card.campaign-minigame::before{height:6px;background:#f59e0b}
+    .live-card.campaign-member{border-color:#22c55e;box-shadow:0 0 0 2px rgba(34,197,94,.12),var(--shadow)}
+    .live-card.campaign-member::before{height:6px;background:#16a34a}
+    tr.campaign-spikeday td:first-child{border-left:5px solid #dc2626}
+    tr.campaign-minigame td:first-child{border-left:5px solid #f59e0b}
+    tr.campaign-member td:first-child{border-left:5px solid #16a34a}
+    .day-picker{display:grid;grid-template-columns:repeat(10,minmax(38px,1fr));gap:7px;margin-top:8px}
+    .day-picker label{display:flex;align-items:center;justify-content:center;gap:4px;border:1px solid var(--line);border-radius:8px;padding:8px 5px;background:#fff;cursor:pointer}
+    .day-picker input{width:auto;margin:0}
 
     .person-row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:13px}
     .person-info{display:flex;gap:11px;align-items:center;min-width:0}
@@ -1247,12 +1259,37 @@
             <p>Bảng báo cáo tự động nhận dữ liệu phiên live Shopee theo Live ID; nếu chưa có Live ID sẽ chỉ đối chiếu dữ liệu theo khung giờ.</p>
           </div>
           <div class="toolbar">
-            <button class="secondary" onclick="openShopeeSettings()">Cấu hình Worker Shopee</button>
+            <button id="reportShopeeSettingsBtn" class="secondary" onclick="openShopeeSettings()">Cấu hình Worker Shopee</button>
             <button onclick="exportXLS()">Xuất XLS</button>
           </div>
         </div>
         <div id="shopeeAutoSyncPanel"></div>
         <div id="reportWrap" class="table-scroll"></div>
+      </section>
+
+      <section id="view-kpi" class="view">
+        <div class="section-head">
+          <div>
+            <h2>KPI theo ngày Campaign</h2>
+            <p>Cấu hình theo từng tháng và từng shop. Spikeday ưu tiên cao nhất, sau đó Minigame và Member Day cố định ngày 10, 20.</p>
+          </div>
+        </div>
+        <div class="card">
+          <div class="form-grid three">
+            <div class="form-field"><label>Tháng áp dụng</label><input id="campaignMonth" type="month" onchange="loadCampaignKpiForm()"></div>
+            <div class="form-field"><label>Shop / Kênh</label><select id="campaignShop" onchange="loadCampaignKpiForm()"></select></div>
+            <div class="form-field"><label>Ngày Spikeday</label><input id="campaignSpikeDate" type="date"></div>
+            <div class="form-field"><label>KPI Spikeday</label><input id="campaignSpikeKpi" type="number" min="0" placeholder="GMV mục tiêu mỗi ca"></div>
+            <div class="form-field"><label>KPI Minigame</label><input id="campaignMinigameKpi" type="number" min="0" placeholder="GMV mục tiêu mỗi ca"></div>
+            <div class="form-field"><label>KPI Member Day (ngày 10 & 20)</label><input id="campaignMemberKpi" type="number" min="0" placeholder="GMV mục tiêu mỗi ca"></div>
+          </div>
+          <div class="form-field">
+            <label>Chọn chính xác các ngày Minigame trong tháng</label>
+            <div id="campaignMinigameDays" class="day-picker"></div>
+          </div>
+          <div class="actions"><button onclick="saveCampaignKpi()">Lưu KPI campaign</button></div>
+        </div>
+        <div id="campaignKpiSummary"></div>
       </section>
 
       <section id="view-shopee" class="view">
@@ -1277,7 +1314,7 @@
         <div class="section-head">
           <div>
             <h2>Duyệt yêu cầu sửa báo cáo</h2>
-            <p>Khi nhân viên đã gửi báo cáo rồi muốn sửa lại, yêu cầu sẽ hiện ở đây và chỉ admin duyệt mới cập nhật vào báo cáo chính.</p>
+            <p>Khi nhân viên sửa báo cáo đã gửi, Admin hoặc Lead Live phụ trách shop sẽ duyệt trước khi cập nhật báo cáo chính.</p>
           </div>
         </div>
         <div id="approvalWrap"></div>
@@ -1507,17 +1544,31 @@
           <h3>Kết thúc ca live</h3>
           <div class="meta" id="endMeta">---</div>
         </div>
-        <button class="close" onclick="closeModal('endModal')">×</button>
+        <button class="close" onclick="closeEndModal()">×</button>
       </div>
       <input type="hidden" id="endShiftId">
       <input type="hidden" id="endRole">
+      <input type="hidden" id="endPhotoOnly" value="0">
       <div class="warning-note" id="endDurationText">Thời gian live sẽ được chốt vào báo cáo.</div>
+      <div class="camera-box">
+        <div>
+          <video id="checkoutCameraVideo" autoplay="" playsinline=""></video>
+          <div class="actions">
+            <button type="button" onclick="captureCheckoutPhoto()">Chụp ảnh checkout</button>
+            <button type="button" class="gray" onclick="startCheckoutCamera()">Mở lại camera</button>
+          </div>
+        </div>
+        <div>
+          <canvas id="checkoutCameraCanvas"></canvas>
+          <div class="warning-note">Bắt buộc chụp ảnh checkout trước khi xác nhận. Ảnh được lưu để Lead Live và Admin kiểm tra.</div>
+        </div>
+      </div>
       <div class="form-field">
         <label>Ghi chú khi kết thúc nếu có</label>
         <textarea id="endNote" placeholder="Ví dụ: Kết thúc đúng giờ, phát sinh lỗi mạng, khách hỏi nhiều về giá..."></textarea>
       </div>
       <div class="actions">
-        <button class="red" onclick="confirmEndLive()">Xác nhận kết thúc ca live</button>
+        <button id="confirmEndBtn" class="red" onclick="confirmEndLive()">Xác nhận kết thúc ca live</button>
       </div>
     </div>
   </div>
@@ -1537,17 +1588,17 @@
         Nếu ca có Live ID, hệ thống sẽ ưu tiên lấy dữ liệu đúng phiên live Shopee gồm GMV, đơn, xu, view, CTR, CO, add to cart, bình luận và thời gian xem trung bình nếu API Live được cấp quyền. Nếu chưa có Live ID/API Live, hệ thống chỉ có thể sync dữ liệu đơn theo khung giờ.
         <div class="actions" style="margin-top:10px">
           <button type="button" class="green" onclick="syncShopeeMetricsForCurrentReport()">Đồng bộ ngay từ Shopee</button>
-          <button type="button" class="gray" onclick="openShopeeSettings()">Cấu hình tự động</button>
+          <button id="reportSyncSettingsBtn" type="button" class="gray" onclick="openShopeeSettings()">Cấu hình tự động</button>
         </div>
       </div>
       <div class="form-grid four">
         <div class="form-field">
           <label>GMV</label>
-          <input id="reportGMV" type="number" min="0" oninput="autoAOV()">
+          <input id="reportGMV" type="number" min="0" oninput="autoReportDerived()">
         </div>
         <div class="form-field">
           <label>Đơn hàng</label>
-          <input id="reportOrders" type="number" min="0" oninput="autoAOV()">
+          <input id="reportOrders" type="number" min="0" oninput="autoReportDerived()">
         </div>
         <div class="form-field">
           <label>Xu đã tung</label>
@@ -1581,7 +1632,24 @@
           <label>Thời gian xem trung bình</label>
           <input id="reportAvgWatch" placeholder="Ví dụ: 1 phút 35 giây">
         </div>
+        <div class="form-field">
+          <label>Chi phí Minigame</label>
+          <input id="reportMinigameCost" type="number" min="0" placeholder="0">
+        </div>
+        <div class="form-field">
+          <label>GMV / giờ live thực tế</label>
+          <input id="reportGmvPerHour" type="number" min="0" readonly>
+        </div>
+        <div id="goobyWetWipesField" class="form-field hidden">
+          <label>GMV khăn ướt (chỉ số phụ)</label>
+          <input id="reportGmvWetWipes" type="number" min="0" placeholder="0">
+        </div>
+        <div id="goobyNewbornBoxField" class="form-field hidden">
+          <label>GMV Box Newborn (chỉ số phụ)</label>
+          <input id="reportGmvNewbornBox" type="number" min="0" placeholder="0">
+        </div>
       </div>
+      <div id="reportCampaignComparison" class="warning-note"></div>
       <div class="form-field">
         <label>Ghi chú tổng kết sau live</label>
         <textarea id="reportNote" placeholder="Ví dụ: Combo bán tốt, xu tung hiệu quả, cần tăng CTA add to cart ở ca sau..."></textarea>
@@ -1596,7 +1664,7 @@
     <div class="modal">
       <div class="modal-head">
         <div>
-          <h3>Ảnh check-in</h3>
+          <h3 id="photoTitle">Ảnh ca live</h3>
           <div class="meta" id="photoMeta">---</div>
         </div>
         <button class="close" onclick="closeModal('photoModal')">×</button>
@@ -1652,6 +1720,7 @@
     let historyShiftFilter = "all";
     let cameraStream = null;
     let capturedPhoto = "";
+    let capturedCheckoutPhoto = "";
 
     function id(){ return "id_" + Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
     function todayISO(){ return new Date().toISOString().slice(0,10); }
@@ -1724,6 +1793,7 @@
       if(!db.dataLogs || !Array.isArray(db.dataLogs)) db.dataLogs = [];
       if(!db.reportEditRequests || !Array.isArray(db.reportEditRequests)) db.reportEditRequests = [];
       if(!db.settings || typeof db.settings !== "object") db.settings = {};
+      if(!db.settings.campaignKpiByMonth || typeof db.settings.campaignKpiByMonth !== "object") db.settings.campaignKpiByMonth = {};
       if(!db.settings.shopeeConnections || typeof db.settings.shopeeConnections !== "object") db.settings.shopeeConnections = {};
       if(db.settings.shopeeAutoSyncEnabled === undefined) db.settings.shopeeAutoSyncEnabled = true;
       if(!db.settings.shopeeSyncIntervalMs) db.settings.shopeeSyncIntervalMs = SHOPEE_AUTO_SYNC_INTERVAL_MS;
@@ -1752,6 +1822,10 @@
         if(!s.shop) s.shop = "Khác";
         if(!s.host) s.host = {checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""};
         if(!s.support) s.support = {checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""};
+        if(s.host.checkoutPhoto === undefined) s.host.checkoutPhoto = "";
+        if(s.host.checkoutTime === undefined) s.host.checkoutTime = "";
+        if(s.support.checkoutPhoto === undefined) s.support.checkoutPhoto = "";
+        if(s.support.checkoutTime === undefined) s.support.checkoutTime = "";
         if(!s.supportId){ s.supportId = ""; s.supportName = s.supportName || "Không có"; }
         if(!s.shopeeLiveUrl) s.shopeeLiveUrl = "";
         if(!s.shopeeLiveId) s.shopeeLiveId = parseShopeeLiveId(s.shopeeLiveUrl);
@@ -1809,6 +1883,21 @@
       }catch(e){
         console.error("Không upload được ảnh check-in lên Storage", e);
         toast("Không upload được ảnh lên Storage, tạm lưu ảnh trong dữ liệu");
+        return dataUrl;
+      }
+    }
+
+    async function uploadCheckoutPhotoToCloud(shiftId, role, dataUrl){
+      if(!cloudReady || !cloudStorage || !dataUrl) return dataUrl;
+      try{
+        const safeRole = role === "host" ? "host" : "support";
+        const path = `checkouts/${shiftId}/${safeRole}_${Date.now()}.jpg`;
+        const photoRef = cloudStorage.ref(path);
+        const snapshot = await photoRef.putString(dataUrl, "data_url");
+        return await snapshot.ref.getDownloadURL();
+      }catch(e){
+        console.error("Không upload được ảnh checkout lên Storage", e);
+        toast("Không upload được ảnh checkout lên Storage, tạm lưu ảnh trong dữ liệu");
         return dataUrl;
       }
     }
@@ -1921,6 +2010,9 @@
     function isAdmin(){ return currentUser && currentUser.role === "admin"; }
     function isLeadLive(){ return currentUser && currentUser.role === "lead"; }
     function isEmployee(){ return currentUser && normalizedAccountRole(currentUser.role) === "employee"; }
+    function canManageAccounts(){ return isAdmin() || isLeadLive(); }
+    function canManageKpi(){ return isAdmin() || isLeadLive(); }
+    function canReviewReportRequests(){ return isAdmin() || isLeadLive(); }
     function canViewShop(shop, account=currentUser){
       return !!account && (account.role === "admin" || accountCanHandleShop(account, shop));
     }
@@ -1929,6 +2021,19 @@
     }
     function canManageShift(shift){
       return !!shift && (isAdmin() || (isLeadLive() && canViewShift(shift)));
+    }
+    function canManageAccount(account){
+      if(!account) return false;
+      if(isAdmin()) return true;
+      if(!isLeadLive() || normalizedAccountRole(account.role) !== "employee") return false;
+      const shops = getAccountShops(account).filter(shop=>shop !== "Tất cả");
+      return shops.length > 0 && shops.every(shop=>canViewShop(shop));
+    }
+    function canViewEmployeeAccount(account){
+      if(!account) return false;
+      if(isAdmin()) return true;
+      if(!isLeadLive() || normalizedAccountRole(account.role) !== "employee") return false;
+      return getAccountShops(account).some(shop=>shop !== "Tất cả" && canViewShop(shop));
     }
     function isParticipant(shift){
       return currentUser && (shift.hostId === currentUser.id || shift.supportId === currentUser.id);
@@ -2139,8 +2244,9 @@
     function accountShopOptions(selected=[]){
       const chosen = normalizeShopList(selected);
       const allSelected = chosen.includes("Tất cả");
-      return `<option value="Tất cả" ${allSelected?"selected":""}>Tất cả kênh</option>` +
-        getChannels().map(ch=>`<option value="${ch}" ${chosen.includes(ch)?"selected":""}>${ch}</option>`).join("");
+      const channels = isLeadLive() ? allowedChannelsForCurrentUser() : getChannels();
+      const allOption = isAdmin() ? `<option value="Tất cả" ${allSelected?"selected":""}>Tất cả kênh</option>` : "";
+      return allOption + channels.map(ch=>`<option value="${ch}" ${chosen.includes(ch)?"selected":""}>${ch}</option>`).join("");
     }
 
     function allowedChannelsForCurrentUser(){
@@ -2189,7 +2295,11 @@
       document.getElementById("currentUserPill").textContent = `${currentUser.name} · ${roleLabel(currentUser.role)}`;
       document.getElementById("headerSubtitle").textContent = (isAdmin()
         ? "Admin quản lý toàn bộ hệ thống vận hành live"
-        : (isLeadLive() ? "Lead Live theo dõi các shop được phân quyền" : "Nhân viên đăng ký Host hoặc tham gia Trợ live theo từng ca")) + " · " + cloudStatusText();
+        : (isLeadLive() ? "Lead Live vận hành đầy đủ các shop được phân quyền, ngoại trừ hệ thống kết nối" : "Nhân viên đăng ký Host hoặc tham gia Trợ live theo từng ca")) + " · " + cloudStatusText();
+      const shopeeSettingsBtn = document.getElementById("reportShopeeSettingsBtn");
+      if(shopeeSettingsBtn) shopeeSettingsBtn.classList.toggle("hidden", !isAdmin());
+      const reportSyncSettingsBtn = document.getElementById("reportSyncSettingsBtn");
+      if(reportSyncSettingsBtn) reportSyncSettingsBtn.classList.toggle("hidden", !isAdmin());
       renderTabs();
       switchView(activeView);
       startShopeeAutoSyncLoop();
@@ -2198,9 +2308,9 @@
     function renderTabs(){
       const pendingCount = pendingReportEditRequests().length;
       const tabs = isAdmin()
-        ? [["dashboard","Tổng quan"],["register","Đăng ký ca live"],["accounts","Tài khoản"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["shopee","Kết nối Shopee"],["approvals",`Duyệt sửa báo cáo${pendingCount ? " ("+pendingCount+")" : ""}`],["history","Lịch sử chỉnh sửa"]]
+        ? [["dashboard","Tổng quan"],["register","Đăng ký ca live"],["accounts","Tài khoản"],["kpi","KPI Campaign"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["shopee","Kết nối Shopee"],["approvals",`Duyệt sửa báo cáo${pendingCount ? " ("+pendingCount+")" : ""}`],["history","Lịch sử chỉnh sửa"]]
         : (isLeadLive()
-          ? [["dashboard","Tổng quan shop"],["register","Lịch live"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["history","Lịch sử chỉnh sửa"]]
+          ? [["dashboard","Tổng quan shop"],["register","Lịch live"],["accounts","Tài khoản"],["kpi","KPI Campaign"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["approvals",`Duyệt sửa báo cáo${pendingCount ? " ("+pendingCount+")" : ""}`],["history","Lịch sử chỉnh sửa"]]
           : [["myshift","Ca live của tôi"],["register","Lịch live theo shop"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["history","Lịch sử chỉnh sửa"]]);
       if(!tabs.some(t=>t[0] === activeView)) activeView = tabs[0][0];
       document.getElementById("tabs").innerHTML = tabs.map(t=>`
@@ -2209,6 +2319,8 @@
     }
 
     function switchView(view){
+      if(view === "shopee" && !isAdmin()) return toast("Chỉ Admin được theo dõi hệ thống kết nối");
+      if(["dashboard","accounts","kpi","approvals"].includes(view) && isEmployee()) return toast("Bạn không có quyền mở mục này");
       activeView = view;
       renderTabs();
       document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
@@ -2223,6 +2335,7 @@
       renderMyShift();
       renderRegisterTable();
       renderAccountTable();
+      renderCampaignKpi();
       renderNoteOptions();
       renderNotes();
       renderReports();
@@ -2467,7 +2580,23 @@
     }
     function canReport(shift){
       const st = computeShiftStatus(shift).value;
-      return canManageShift(shift) || isParticipant(shift) ? (st === "ended" || st === "reported") : false;
+      const permitted = canManageShift(shift) || isParticipant(shift);
+      if(!permitted || (st !== "ended" && st !== "reported")) return false;
+      // Báo cáo cũ vẫn mở bình thường; ca chưa có báo cáo bắt buộc đủ ảnh checkout của mọi vị trí đã check-in.
+      return !!shift.report || hasRequiredCheckoutPhotos(shift);
+    }
+    function checkoutMissingRoles(shift){
+      const missing = [];
+      if(shift?.host?.checkinTs && !shift.host.checkoutPhoto) missing.push("Host");
+      if(shift?.supportId && shift?.support?.checkinTs && !shift.support.checkoutPhoto) missing.push("Trợ live");
+      return missing;
+    }
+    function hasRequiredCheckoutPhotos(shift){
+      return checkoutMissingRoles(shift).length === 0 && !!(shift?.host?.checkinTs || shift?.support?.checkinTs);
+    }
+    function canAddCheckoutPhoto(shift, role){
+      if(!shift || !role || !shift[role]?.checkinTs || !shift[role]?.endTs || shift[role]?.checkoutPhoto) return false;
+      return canManageShift(shift) || userRoleInShift(shift) === role;
     }
 
     function relativeTimeFromMs(ts){
@@ -2514,7 +2643,8 @@
 
     function renderShopeeRealtimeDashboardPanel(shifts=[]){
       const wrap = document.getElementById("shopeeRealtimeDashboardPanel");
-      if(!wrap || !isAdmin()) return;
+      if(!wrap) return;
+      if(!isAdmin()){ wrap.innerHTML = ""; return; }
       const endpoint = getShopeeSyncEndpoint();
       const connections = shopeeConnectionMap();
       const channels = getChannels();
@@ -2620,6 +2750,7 @@
 
     function renderShiftCard(shift){
       const st = computeShiftStatus(shift);
+      const campaign = shiftCampaignInfo(shift);
       const myRole = userRoleInShift(shift);
       const hasSupport = !!shift.supportId;
       const showHostEnd = (shift.host.checkinTs || (hasSupport && shift.support.checkinTs)) ? formatDuration(roleEffectiveMs(shift,"host")) : "Chưa bắt đầu";
@@ -2635,7 +2766,7 @@
         alertColor = "blue";
         alertText = "Ca này đang chưa có trợ live. Bạn có thể đăng ký tham gia.";
       }
-      const pendingReq = currentUser ? getPendingReportEditRequest(shift.id, isAdmin() ? "" : currentUser.id) : null;
+      const pendingReq = currentUser ? getPendingReportEditRequest(shift.id, canManageShift(shift) ? "" : currentUser.id) : null;
 
       const roleActions = [];
       if(isEmployee() && !hasSupport && isOpenShiftForSupport(shift)){
@@ -2646,21 +2777,21 @@
           roleActions.push(`<button class="small green" onclick="joinShiftAsSupport('${shift.id}')">+ Tham gia trợ live</button>`);
         }
       }
-      if((isAdmin() || myRole === "host") && canCheckin(shift,"host")){
+      if((canManageShift(shift) || myRole === "host") && canCheckin(shift,"host")){
         roleActions.push(`<button class="small green" onclick="openCheckinModal('${shift.id}','host')">Host check-in</button>`);
       }
-      if((isAdmin() || myRole === "host") && canEndLive(shift,"host")){
+      if((canManageShift(shift) || myRole === "host") && canEndLive(shift,"host")){
         roleActions.push(`<button class="small red" onclick="openEndModal('${shift.id}','host')">Kết thúc host live</button>`);
       }
-      if(hasSupport && (isAdmin() || myRole === "support") && canCheckin(shift,"support")){
+      if(hasSupport && (canManageShift(shift) || myRole === "support") && canCheckin(shift,"support")){
         roleActions.push(`<button class="small green" onclick="openCheckinModal('${shift.id}','support')">Trợ live check-in</button>`);
       }
-      if(hasSupport && (isAdmin() || myRole === "support") && canEndLive(shift,"support")){
+      if(hasSupport && (canManageShift(shift) || myRole === "support") && canEndLive(shift,"support")){
         roleActions.push(`<button class="small red" onclick="openEndModal('${shift.id}','support')">Kết thúc trợ live</button>`);
       }
 
       return `
-        <div class="card live-card ${st.card}">
+        <div class="card live-card ${st.card} ${campaign.className}">
           <div class="person-row">
             <div class="person-info">
               <div class="avatar">${shift.hostName.slice(0,1).toUpperCase()}</div>
@@ -2671,7 +2802,7 @@
                 ${shift.shopeeLiveId ? `<div class="meta">Phiên live Shopee: <b>${escapeHtml(shift.shopeeLiveId)}</b></div>` : ""}
               </div>
             </div>
-            <span class="badge ${st.color}">${st.label}</span>
+            <div class="toolbar">${campaignBadgeHtml(shift)}<span class="badge ${st.color}">${st.label}</span></div>
           </div>
 
           <div class="metrics">
@@ -2712,15 +2843,20 @@
             </div>
           </div>
 
-          <div class="alert-box ${alertColor}">${alertText}${pendingReq ? `<br/><b>Đang có yêu cầu sửa báo cáo chờ admin duyệt.</b>` : ""}</div>
+          <div class="alert-box ${alertColor}">${alertText}${pendingReq ? `<br/><b>Đang có yêu cầu sửa báo cáo chờ Admin/Lead Live duyệt.</b>` : ""}</div>
 
           <div class="meta">
             Host check-in: ${shift.host.checkinTime || "-"} ${shift.host.photo ? `· <a href="#" onclick="openPhoto('${shift.id}','host');return false;">Xem ảnh</a>` : ""}<br/>
-            Trợ live check-in: ${shift.support.checkinTime || "-"} ${shift.support.photo ? `· <a href="#" onclick="openPhoto('${shift.id}','support');return false;">Xem ảnh</a>` : ""}
+            Trợ live check-in: ${shift.support.checkinTime || "-"} ${shift.support.photo ? `· <a href="#" onclick="openPhoto('${shift.id}','support');return false;">Xem ảnh</a>` : ""}<br/>
+            Checkout: ${checkoutMissingRoles(shift).length ? `<span style="color:#b91c1c">Thiếu ảnh ${checkoutMissingRoles(shift).join(", ")}</span>` : "Đã đủ ảnh"}
+            ${(isAdmin() || isLeadLive()) && shift.host.checkoutPhoto ? ` · <a href="#" onclick="openCheckoutPhoto('${shift.id}','host');return false;">Ảnh Host</a>` : ""}
+            ${(isAdmin() || isLeadLive()) && shift.support.checkoutPhoto ? ` · <a href="#" onclick="openCheckoutPhoto('${shift.id}','support');return false;">Ảnh Trợ</a>` : ""}
           </div>
 
           <div class="actions">
             ${roleActions.join("")}
+            ${canAddCheckoutPhoto(shift,"host") ? `<button class="small red" onclick="openEndModal('${shift.id}','host',true)">Bổ sung ảnh checkout Host</button>` : ""}
+            ${canAddCheckoutPhoto(shift,"support") ? `<button class="small red" onclick="openEndModal('${shift.id}','support',true)">Bổ sung ảnh checkout Trợ</button>` : ""}
             ${(canManageShift(shift) || isParticipant(shift)) ? `<button class="small purple" onclick="openLiveUrlModal('${shift.id}')">${shift.shopeeLiveId ? "Sửa link live" : "Nhập link live"}</button>` : ""}
             ${(canManageShift(shift) || isParticipant(shift)) ? `<button class="small secondary" onclick="prepareQuickNote('${shift.id}')">Ghi chú phát sinh</button>` : ""}
             ${(canManageShift(shift) || isParticipant(shift)) ? reportActionButton(shift) : ""}
@@ -2749,8 +2885,8 @@
             ${rows.map(s=>{
               const st = computeShiftStatus(s);
               return `
-              <tr>
-                <td>${s.date}</td>
+              <tr class="${shiftCampaignInfo(s).className}">
+                <td>${s.date}<br/>${campaignBadgeHtml(s)}</td>
                 <td>${s.start}-${s.end}</td>
                 <td><span class="badge purple">${s.shop || "Khác"}</span>${s.shopeeLiveId ? `<br/><span class="meta">Live ID: ${escapeHtml(s.shopeeLiveId)}</span>` : ""}</td>
                 <td><strong>${s.hostName}</strong></td>
@@ -2772,12 +2908,13 @@
     }
 
     function renderAccountTable(){
-      if(!isAdmin()) return;
+      if(!canManageAccounts()) return;
+      const accounts = isAdmin() ? db.accounts : db.accounts.filter(a=>canViewEmployeeAccount(a));
       document.getElementById("accountTableWrap").innerHTML = `
         <table>
           <thead><tr><th>Họ tên</th><th>Tài khoản</th><th>Vai trò</th><th>Shop</th><th>KPI GMV</th><th>Trạng thái</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead>
           <tbody>
-            ${db.accounts.map(a=>`
+            ${accounts.map(a=>`
               <tr>
                 <td><strong>${a.name}</strong></td>
                 <td>${a.username}</td>
@@ -2787,8 +2924,8 @@
                 <td><span class="badge ${a.status==="active"?"green":"red"}">${a.status==="active"?"Đang hoạt động":"Đang khóa"}</span></td>
                 <td>${a.createdAt || "-"}</td>
                 <td>
-                  <button class="small" onclick="editAccount('${a.id}')">Sửa</button>
-                  ${a.id !== currentUser.id ? `<button class="small red" onclick="deleteAccount('${a.id}')">Xóa</button>` : ""}
+                  ${canManageAccount(a) ? `<button class="small" onclick="editAccount('${a.id}')">Sửa</button>` : ""}
+                  ${a.id !== currentUser.id && canManageAccount(a) ? `<button class="small red" onclick="deleteAccount('${a.id}')">Xóa</button>` : ""}
                 </td>
               </tr>
             `).join("")}
@@ -2800,6 +2937,111 @@
     function visibleShifts(){
       const shifts = db.shifts.filter(s=>canViewShift(s));
       return getChannelFilteredShifts(shifts);
+    }
+
+    function currentMonthISO(){ return todayISO().slice(0,7); }
+    function daysInMonth(month){
+      const [year,mon] = String(month || currentMonthISO()).split("-").map(Number);
+      return new Date(year, mon, 0).getDate();
+    }
+    function campaignConfig(month, shop){
+      return db.settings?.campaignKpiByMonth?.[month]?.[shop] || {spikeDate:"",spikeKpi:0,minigameDates:[],minigameKpi:0,memberKpi:0};
+    }
+    function shiftCampaignInfo(shift){
+      const date = String(shift?.date || "");
+      const month = date.slice(0,7);
+      const cfg = campaignConfig(month, shift?.shop || "");
+      const day = Number(date.slice(8,10));
+      if(cfg.spikeDate === date) return {type:"spikeday",label:"Spikeday",color:"red",className:"campaign-spikeday",target:Number(cfg.spikeKpi || 0)};
+      if((cfg.minigameDates || []).includes(date)) return {type:"minigame",label:"Minigame",color:"yellow",className:"campaign-minigame",target:Number(cfg.minigameKpi || 0)};
+      if(day === 10 || day === 20) return {type:"member",label:"Member Day",color:"green",className:"campaign-member",target:Number(cfg.memberKpi || 0)};
+      return {type:"normal",label:"Ngày thường",color:"gray",className:"",target:0};
+    }
+    function campaignBadgeHtml(shift){
+      const info = shiftCampaignInfo(shift);
+      return info.type === "normal" ? "" : `<span class="badge ${info.color}">${info.label}${info.target ? ` · KPI ${money(info.target)}` : ""}</span>`;
+    }
+    function campaignComparisonHtml(shift, gmv){
+      const info = shiftCampaignInfo(shift);
+      if(info.type === "normal") return `<span class="meta">Ngày thường · chưa áp KPI campaign</span>`;
+      const actual = Number(gmv || 0);
+      const pct = info.target > 0 ? Math.round(actual / info.target * 100) : 0;
+      const status = info.target > 0 && actual >= info.target ? "Đạt KPI" : (info.target > 0 ? "Chưa đạt KPI" : "Chưa nhập KPI");
+      return `<span class="badge ${info.target > 0 && actual >= info.target ? "green" : info.color}">${info.label}</span><br/><strong>${money(actual)} / ${money(info.target)}</strong> · ${pct}% · ${status}`;
+    }
+
+    function renderMinigameDayPicker(month, selectedDates=[]){
+      const wrap = document.getElementById("campaignMinigameDays");
+      if(!wrap) return;
+      const selected = new Set(selectedDates || []);
+      const count = daysInMonth(month);
+      wrap.innerHTML = Array.from({length:count},(_,i)=>{
+        const day = i + 1;
+        const date = `${month}-${String(day).padStart(2,"0")}`;
+        return `<label><input type="checkbox" value="${date}" ${selected.has(date)?"checked":""}>${day}</label>`;
+      }).join("");
+    }
+    function loadCampaignKpiForm(){
+      if(!canManageKpi()) return;
+      const monthEl = document.getElementById("campaignMonth");
+      const shopEl = document.getElementById("campaignShop");
+      if(!monthEl || !shopEl) return;
+      const month = monthEl.value || currentMonthISO();
+      const shop = shopEl.value || allowedChannelsForCurrentUser()[0] || "";
+      monthEl.value = month;
+      if(shop) shopEl.value = shop;
+      const cfg = campaignConfig(month, shop);
+      document.getElementById("campaignSpikeDate").value = cfg.spikeDate || "";
+      document.getElementById("campaignSpikeDate").min = `${month}-01`;
+      document.getElementById("campaignSpikeDate").max = `${month}-${String(daysInMonth(month)).padStart(2,"0")}`;
+      document.getElementById("campaignSpikeKpi").value = Number(cfg.spikeKpi || 0);
+      document.getElementById("campaignMinigameKpi").value = Number(cfg.minigameKpi || 0);
+      document.getElementById("campaignMemberKpi").value = Number(cfg.memberKpi || 0);
+      renderMinigameDayPicker(month, cfg.minigameDates || []);
+      renderCampaignKpiSummary(month, shop);
+    }
+    function renderCampaignKpi(){
+      if(!canManageKpi()) return;
+      const monthEl = document.getElementById("campaignMonth");
+      const shopEl = document.getElementById("campaignShop");
+      if(!monthEl || !shopEl) return;
+      const previousMonth = monthEl.value || currentMonthISO();
+      const previousShop = shopEl.value;
+      monthEl.value = previousMonth;
+      shopEl.innerHTML = allowedChannelsForCurrentUser().map(ch=>`<option value="${ch}">${ch}</option>`).join("");
+      shopEl.value = allowedChannelsForCurrentUser().includes(previousShop) ? previousShop : (allowedChannelsForCurrentUser()[0] || "");
+      loadCampaignKpiForm();
+    }
+    function renderCampaignKpiSummary(month, shop){
+      const wrap = document.getElementById("campaignKpiSummary");
+      if(!wrap) return;
+      const cfg = campaignConfig(month, shop);
+      wrap.innerHTML = `<div class="card" style="margin-top:16px"><div class="section-head" style="margin-top:0"><div><h2>Lịch campaign ${month} · ${shop || "-"}</h2><p>Màu được áp dụng tự động vào bảng ca live và báo cáo.</p></div></div><div class="toolbar"><span class="badge red">Spikeday: ${cfg.spikeDate || "Chưa chọn"} · ${money(cfg.spikeKpi || 0)}</span><span class="badge yellow">Minigame: ${(cfg.minigameDates || []).map(d=>d.slice(8,10)).join(", ") || "Chưa chọn ngày"} · ${money(cfg.minigameKpi || 0)}</span><span class="badge green">Member: ngày 10, 20 · ${money(cfg.memberKpi || 0)}</span></div></div>`;
+    }
+    function saveCampaignKpi(){
+      if(!canManageKpi()) return toast("Bạn không có quyền chia KPI campaign");
+      const month = document.getElementById("campaignMonth").value;
+      const shop = document.getElementById("campaignShop").value;
+      const spikeDate = document.getElementById("campaignSpikeDate").value;
+      if(!month || !shop) return toast("Chọn tháng và shop");
+      if(!canViewShop(shop)) return toast("Bạn không phụ trách shop này");
+      if(spikeDate && !spikeDate.startsWith(month + "-")) return toast("Ngày Spikeday phải nằm trong tháng đã chọn");
+      const minigameDates = Array.from(document.querySelectorAll("#campaignMinigameDays input:checked")).map(x=>x.value);
+      if(!db.settings.campaignKpiByMonth[month]) db.settings.campaignKpiByMonth[month] = {};
+      const before = cloneData(db.settings.campaignKpiByMonth[month][shop] || {});
+      const after = {
+        spikeDate,
+        spikeKpi:Number(document.getElementById("campaignSpikeKpi").value || 0),
+        minigameDates,
+        minigameKpi:Number(document.getElementById("campaignMinigameKpi").value || 0),
+        memberKpi:Number(document.getElementById("campaignMemberKpi").value || 0),
+        updatedAt:nowText(),updatedBy:currentUser.name
+      };
+      db.settings.campaignKpiByMonth[month][shop] = after;
+      recordDatabaseEvent({module:"campaign_kpi",action:"Cập nhật KPI campaign",before,after,details:{month,shop}});
+      saveDB({immediate:true});
+      renderContent();
+      toast("Đã lưu KPI campaign");
     }
 
     function getAccount(accountId){
@@ -2850,6 +3092,15 @@
     function shiftSupportMs(shift){
       if(!shift.supportId) return 0;
       return Number(shift.report?.supportActualMs || roleEffectiveMs(shift,"support"));
+    }
+
+    function shiftSessionMs(shift){
+      return Math.max(shiftHostMs(shift), shiftSupportMs(shift));
+    }
+
+    function calculateGmvPerHour(shift, gmv){
+      const ms = shiftSessionMs(shift);
+      return ms > 0 ? Math.round(Number(gmv || 0) / (ms / 3600000)) : 0;
     }
 
     function employeeGmvInShifts(accountId, shifts){
@@ -2907,6 +3158,10 @@
       {key:"atc",label:"Lượt add to cart",format:"number"},
       {key:"comments",label:"Lượt bình luận",format:"number"},
       {key:"avgWatch",label:"Thời gian xem trung bình"},
+      {key:"minigameCost",label:"Chi phí Minigame",format:"money"},
+      {key:"gmvPerHour",label:"GMV / giờ live",format:"money"},
+      {key:"gmvWetWipes",label:"GMV khăn ướt",format:"money"},
+      {key:"gmvNewbornBox",label:"GMV Box Newborn",format:"money"},
       {key:"note",label:"Ghi chú tổng kết"}
     ];
 
@@ -3077,7 +3332,12 @@
 
     function pendingReportEditRequests(){
       if(!db || !Array.isArray(db.reportEditRequests)) return [];
-      return db.reportEditRequests.filter(r=>r.status === "pending");
+      return db.reportEditRequests.filter(r=>{
+        if(r.status !== "pending") return false;
+        if(isAdmin()) return true;
+        if(isLeadLive()) return canViewShift(db.shifts.find(s=>s.id === r.shiftId));
+        return r.requestedById === currentUser?.id || (r.participantIds || []).includes(currentUser?.id);
+      });
     }
 
     function getPendingReportEditRequest(shiftId, requesterId=""){
@@ -3094,18 +3354,26 @@
       return db.reportEditRequests.filter(r=>{
         if(status !== "all" && r.status !== status) return false;
         if(isAdmin()) return true;
+        if(isLeadLive()) return canViewShift(db.shifts.find(s=>s.id === r.shiftId));
         if(r.requestedById === currentUser.id) return true;
         return (r.participantIds || []).includes(currentUser.id);
       }).sort((a,b)=>Number(b.ts || 0) - Number(a.ts || 0));
     }
 
     function reportActionButton(shift){
-      if(!canReport(shift)) return "";
-      const pendingReq = currentUser ? getPendingReportEditRequest(shift.id, isAdmin() ? "" : currentUser.id) : null;
-      if(!isAdmin() && shift.report && pendingReq){
+      if(!canReport(shift)){
+        const st = computeShiftStatus(shift).value;
+        if((canManageShift(shift) || isParticipant(shift)) && (st === "ended" || st === "reported") && checkoutMissingRoles(shift).length){
+          return `<button class="small secondary" disabled title="Cần ảnh checkout">Thiếu ảnh checkout ${checkoutMissingRoles(shift).join(", ")}</button>`;
+        }
+        return "";
+      }
+      const manager = canManageShift(shift);
+      const pendingReq = currentUser ? getPendingReportEditRequest(shift.id, manager ? "" : currentUser.id) : null;
+      if(!manager && shift.report && pendingReq){
         return `<button class="small yellow" onclick="openReportModal('${shift.id}')">Sửa yêu cầu chờ duyệt</button>`;
       }
-      if(!isAdmin() && shift.report){
+      if(!manager && shift.report){
         return `<button class="small blue" onclick="openReportModal('${shift.id}')">Yêu cầu sửa báo cáo</button>`;
       }
       return `<button class="small blue" onclick="openReportModal('${shift.id}')">${shift.report ? "Sửa báo cáo" : "Nhập báo cáo"}</button>`;
@@ -3167,8 +3435,8 @@
     function renderReportApprovals(){
       const wrap = document.getElementById("approvalWrap");
       if(!wrap || !currentUser) return;
-      if(!isAdmin()){
-        wrap.innerHTML = `<div class="empty">Chỉ tài khoản admin được duyệt yêu cầu sửa báo cáo.</div>`;
+      if(!canReviewReportRequests()){
+        wrap.innerHTML = `<div class="empty">Chỉ Admin hoặc Lead Live được duyệt yêu cầu sửa báo cáo.</div>`;
         return;
       }
       const pending = visibleReportEditRequests("pending");
@@ -3213,11 +3481,12 @@
     }
 
     function approveReportEditRequest(requestId){
-      if(!isAdmin()) return toast("Chỉ admin được duyệt yêu cầu");
+      if(!canReviewReportRequests()) return toast("Chỉ Admin hoặc Lead Live được duyệt yêu cầu");
       const req = (db.reportEditRequests || []).find(r=>r.id === requestId);
       if(!req || req.status !== "pending") return toast("Yêu cầu không còn ở trạng thái chờ duyệt");
       const s = db.shifts.find(x=>x.id === req.shiftId);
       if(!s) return toast("Không tìm thấy ca live của yêu cầu này");
+      if(!canManageShift(s)) return toast("Bạn không có quyền duyệt báo cáo của shop này");
       const before = cloneData(s.report || req.before || {});
       const after = cloneData(req.after || {});
       after.approvedAt = nowText();
@@ -3232,7 +3501,7 @@
       req.reviewedTs = nowTs();
       recordDatabaseEvent({
         module:"approval_admin",
-        action:"Admin duyệt yêu cầu sửa báo cáo",
+        action:`${roleLabel(currentUser.role)} duyệt yêu cầu sửa báo cáo`,
         shift:s,
         before,
         after,
@@ -3241,7 +3510,7 @@
       recordEditHistory({
         shift:s,
         type:"report",
-        action:"Admin duyệt sửa báo cáo",
+        action:`${roleLabel(currentUser.role)} duyệt sửa báo cáo`,
         before,
         after,
         fields:REPORT_HISTORY_FIELDS
@@ -3252,12 +3521,13 @@
     }
 
     function rejectReportEditRequest(requestId){
-      if(!isAdmin()) return toast("Chỉ admin được từ chối yêu cầu");
+      if(!canReviewReportRequests()) return toast("Chỉ Admin hoặc Lead Live được từ chối yêu cầu");
       const req = (db.reportEditRequests || []).find(r=>r.id === requestId);
       if(!req || req.status !== "pending") return toast("Yêu cầu không còn ở trạng thái chờ duyệt");
       const reason = prompt("Nhập lý do từ chối yêu cầu sửa báo cáo:", "");
       if(reason === null) return;
       const s = db.shifts.find(x=>x.id === req.shiftId);
+      if(!s || !canManageShift(s)) return toast("Bạn không có quyền xử lý báo cáo của shop này");
       req.status = "rejected";
       req.reviewedById = currentUser.id;
       req.reviewedByName = currentUser.name;
@@ -3308,7 +3578,7 @@
           <div class="section-head" style="margin:0;align-items:center">
             <div>
               <h2 style="font-size:18px">Bộ lọc lịch sử</h2>
-              <p>${isAdmin() ? "Admin xem được toàn bộ lịch sử theo ca đang lọc." : "Nhân viên chỉ xem lịch sử của những ca có tên mình."}</p>
+              <p>${isAdmin() ? "Admin xem được toàn bộ lịch sử theo ca đang lọc." : (isLeadLive() ? "Lead Live xem lịch sử các shop được phân quyền." : "Nhân viên chỉ xem lịch sử của những ca có tên mình.")}</p>
             </div>
             <div class="toolbar">
               <select style="min-width:280px" onchange="setHistoryFilter(this.value)">
@@ -3390,6 +3660,7 @@
       const totalOrders = reportedShifts.reduce((sum,s)=>sum+Number(effectiveReport(s).orders||0),0);
       const totalCoins = reportedShifts.reduce((sum,s)=>sum+Number(effectiveReport(s).coins||0),0);
       const totalViews = reportedShifts.reduce((sum,s)=>sum+Number(effectiveReport(s).view||0),0);
+      const totalMinigameCost = reportedShifts.reduce((sum,s)=>sum+Number(effectiveReport(s).minigameCost||0),0);
       const avgAOV = totalOrders ? Math.round(totalGMV/totalOrders) : 0;
 
       const personalKpiSection = isEmployee() ? (()=>{
@@ -3469,15 +3740,16 @@
           <div class="card"><div class="stat-title">Xu đã tung</div><div class="stat-value">${totalCoins.toLocaleString("vi-VN")}</div><div class="stat-note">Tổng xu</div></div>
           <div class="card"><div class="stat-title">View</div><div class="stat-value">${totalViews.toLocaleString("vi-VN")}</div><div class="stat-note">Tổng view</div></div>
           <div class="card"><div class="stat-title">AOV trung bình</div><div class="stat-value">${money(avgAOV)}</div><div class="stat-note">GMV / đơn</div></div>
+          <div class="card"><div class="stat-title">Chi phí Minigame</div><div class="stat-value">${money(totalMinigameCost)}</div><div class="stat-note">Theo các ca đang lọc</div></div>
         </div>
 
         <table>
           <thead>
             <tr>
-              <th>Ngày</th><th>Kênh bán</th><th>Host live</th><th>Trợ live</th>
+              <th>Ngày / Campaign</th><th>Kênh bán</th><th>Host live</th><th>Trợ live</th>
               <th>Thời gian thực tế host live</th><th>Thời gian thực tế trợ live</th>
               <th>GMV</th><th>Đơn hàng</th><th>Xu đã tung</th><th>CTR</th><th>CO</th><th>View</th>
-              <th>AOV</th><th>Lượt add to cart</th><th>Lượt bình luận</th><th>Thời gian xem TB</th><th>Trạng thái</th><th>Thao tác</th>
+              <th>AOV</th><th>GMV / giờ</th><th>Chi phí Minigame</th><th>GMV khăn ướt</th><th>GMV Box Newborn</th><th>KPI campaign</th><th>Lượt add to cart</th><th>Lượt bình luận</th><th>Thời gian xem TB</th><th>Checkout</th><th>Trạng thái</th><th>Thao tác</th>
             </tr>
           </thead>
           <tbody>
@@ -3485,10 +3757,12 @@
               const st = computeShiftStatus(s);
               const r = effectiveReport(s);
               const aov = r.aov || (r.orders ? Math.round(r.gmv / r.orders) : 0);
-              const pendingReq = currentUser ? getPendingReportEditRequest(s.id, isAdmin() ? "" : currentUser.id) : null;
+              const pendingReq = currentUser ? getPendingReportEditRequest(s.id, canManageShift(s) ? "" : currentUser.id) : null;
+              const gmvPerHour = calculateGmvPerHour(s, r.gmv);
+              const isGooby = String(s.shop || "").toLowerCase().includes("gooby");
               return `
-                <tr>
-                  <td>${s.date}<br/><span class="meta">${s.start}-${s.end}</span></td>
+                <tr class="${shiftCampaignInfo(s).className}">
+                  <td>${s.date}<br/><span class="meta">${s.start}-${s.end}</span><br/>${campaignBadgeHtml(s)}</td>
                   <td><span class="badge purple">${s.shop || "Khác"}</span></td>
                   <td><strong>${s.hostName}</strong></td>
                   <td>${supportNameLabel(s)}</td>
@@ -3501,9 +3775,15 @@
                   <td>${r.co || "-"}</td>
                   <td>${Number(r.view || 0).toLocaleString("vi-VN")}</td>
                   <td>${money(aov || 0)}</td>
+                  <td>${money(gmvPerHour)}</td>
+                  <td>${money(r.minigameCost || 0)}</td>
+                  <td>${isGooby ? money(r.gmvWetWipes || 0) : "-"}</td>
+                  <td>${isGooby ? money(r.gmvNewbornBox || 0) : "-"}</td>
+                  <td>${campaignComparisonHtml(s, r.gmv || 0)}</td>
                   <td>${Number(r.atc || 0).toLocaleString("vi-VN")}</td>
                   <td>${Number(r.comments || 0).toLocaleString("vi-VN")}</td>
                   <td>${r.avgWatch || "-"}</td>
+                  <td>${checkoutMissingRoles(s).length ? `<span class="badge red">Thiếu ${checkoutMissingRoles(s).join(", ")}</span>` : `<span class="badge green">Đủ ảnh</span>`}${(isAdmin() || isLeadLive()) && s.host.checkoutPhoto ? `<br/><button class="small secondary" onclick="openCheckoutPhoto('${s.id}','host')">Ảnh Host</button>` : ""}${(isAdmin() || isLeadLive()) && s.support.checkoutPhoto ? `<br/><button class="small secondary" onclick="openCheckoutPhoto('${s.id}','support')">Ảnh Trợ</button>` : ""}</td>
                   <td><span class="badge ${st.color}">${st.label}</span>${pendingReq ? `<br/><span class="badge yellow" style="margin-top:6px">Chờ duyệt sửa báo cáo</span>` : ""}</td>
                   <td>
                     ${reportActionButton(s)}
@@ -3536,37 +3816,42 @@
     }
 
     function openAccountModal(){
-      if(!isAdmin()) return toast("Bạn không có quyền tạo tài khoản");
+      if(!canManageAccounts()) return toast("Bạn không có quyền tạo tài khoản");
       document.getElementById("accountModalTitle").textContent = "Tạo tài khoản";
       document.getElementById("accountId").value = "";
       document.getElementById("accountName").value = "";
       document.getElementById("accountUsername").value = "";
       document.getElementById("accountUsername").disabled = false;
       document.getElementById("accountPassword").value = "";
-      document.getElementById("accountRole").value = "employee";
-      document.getElementById("accountShop").innerHTML = accountShopOptions(["Gooby"]);
+      const roleSelect = document.getElementById("accountRole");
+      roleSelect.innerHTML = isAdmin() ? `<option value="employee">Nhân viên</option><option value="lead">Lead Live</option><option value="admin">Admin</option>` : `<option value="employee">Nhân viên</option>`;
+      roleSelect.value = "employee";
+      const firstShop = allowedChannelsForCurrentUser()[0] || "Gooby";
+      document.getElementById("accountShop").innerHTML = accountShopOptions([firstShop]);
       document.getElementById("accountStatus").value = "active";
       document.getElementById("accountKpiGmv").value = 50000000;
       openModal("accountModal");
     }
     function editAccount(accountId){
-      if(!isAdmin()) return;
+      if(!canManageAccounts()) return;
       const a = db.accounts.find(x=>x.id===accountId);
-      if(!a) return;
+      if(!a || !canManageAccount(a)) return toast("Bạn không có quyền sửa tài khoản này");
       document.getElementById("accountModalTitle").textContent = "Sửa tài khoản";
       document.getElementById("accountId").value = a.id;
       document.getElementById("accountName").value = a.name;
       document.getElementById("accountUsername").value = a.username;
       document.getElementById("accountUsername").disabled = true;
       document.getElementById("accountPassword").value = "";
-      document.getElementById("accountRole").value = a.role;
+      const roleSelect = document.getElementById("accountRole");
+      roleSelect.innerHTML = isAdmin() ? `<option value="employee">Nhân viên</option><option value="lead">Lead Live</option><option value="admin">Admin</option>` : `<option value="employee">Nhân viên</option>`;
+      roleSelect.value = isLeadLive() ? "employee" : a.role;
       document.getElementById("accountShop").innerHTML = accountShopOptions(getAccountShops(a));
       document.getElementById("accountStatus").value = a.status;
       document.getElementById("accountKpiGmv").value = Number(a.kpiGmv || 0);
       openModal("accountModal");
     }
     async function saveAccount(){
-      if(!isAdmin()) return;
+      if(!canManageAccounts()) return;
       const accountId = document.getElementById("accountId").value;
       const name = document.getElementById("accountName").value.trim();
       const username = document.getElementById("accountUsername").value.trim();
@@ -3575,15 +3860,17 @@
       const shops = selectedAccountShopsFromForm();
       if(!name || !username) return toast("Nhập đủ họ tên và tài khoản");
       if(!shops.length) return toast("Chọn ít nhất 1 shop phụ trách");
+      if(isLeadLive() && shops.some(shop=>!allowedChannelsForCurrentUser().includes(shop))) return toast("Lead Live chỉ được phân quyền các shop mình phụ trách");
       if(!accountId && !password) return toast("Tài khoản mới cần mật khẩu");
       const duplicate = db.accounts.some(a=>a.username.toLowerCase()===username.toLowerCase() && a.id!==accountId);
       if(duplicate) return toast("Tên đăng nhập đã tồn tại");
 
       if(accountId){
         const a = db.accounts.find(x=>x.id===accountId);
+        if(!a || !canManageAccount(a)) return toast("Bạn không có quyền sửa tài khoản này");
         const beforeAccount = removeSensitiveAccountFields(a);
         a.name = name;
-        a.role = document.getElementById("accountRole").value;
+        a.role = isLeadLive() ? "employee" : document.getElementById("accountRole").value;
         a.shops = shops;
         a.shop = accountShopText(a);
         a.status = document.getElementById("accountStatus").value;
@@ -3605,7 +3892,7 @@
       }else{
         const newAccount = {
           id:id(),name,username,passwordHash:await hashPassword(password),
-          role:document.getElementById("accountRole").value,
+          role:isLeadLive() ? "employee" : document.getElementById("accountRole").value,
           shops,
           shop:shops.join(", "),
           status:document.getElementById("accountStatus").value,
@@ -3627,9 +3914,9 @@
       toast("Đã lưu tài khoản");
     }
     function deleteAccount(accountId){
-      if(!isAdmin()) return;
+      if(!canManageAccounts()) return;
       const a = db.accounts.find(x=>x.id===accountId);
-      if(!a) return;
+      if(!a || !canManageAccount(a)) return toast("Bạn không có quyền xóa tài khoản này");
       if(!confirm(`Xóa tài khoản ${a.name}?`)) return;
       recordDatabaseEvent({
         module:"account",
@@ -3878,7 +4165,7 @@
     async function openCheckinModal(shiftId, role){
       const s = db.shifts.find(x=>x.id===shiftId);
       if(!s) return;
-      if(!isAdmin() && userRoleInShift(s)!==role) return toast("Bạn không có quyền check-in vị trí này");
+      if(!canManageShift(s) && userRoleInShift(s)!==role) return toast("Bạn không có quyền check-in vị trí này");
       if(!canCheckin(s,role)) return toast("Vị trí này đã check-in rồi");
 
       document.getElementById("checkinShiftId").value = shiftId;
@@ -3973,26 +4260,73 @@
         toast("Đã bắt đầu live và tính giờ theo thời gian thực");
     }
 
-    function openEndModal(shiftId, role){
+    async function openEndModal(shiftId, role, photoOnly=false){
       const s = db.shifts.find(x=>x.id===shiftId);
       if(!s) return;
-      if(!isAdmin() && userRoleInShift(s)!==role) return toast("Bạn không có quyền kết thúc vị trí này");
-      if(!canEndLive(s,role)) return toast("Vị trí này chưa live hoặc đã kết thúc");
+      if(!canManageShift(s) && userRoleInShift(s)!==role) return toast("Bạn không có quyền checkout vị trí này");
+      if(photoOnly){
+        if(!canAddCheckoutPhoto(s,role) && !canManageShift(s)) return toast("Không thể bổ sung ảnh checkout cho vị trí này");
+      }else if(!canEndLive(s,role)) return toast("Vị trí này chưa live hoặc đã kết thúc");
       document.getElementById("endShiftId").value = shiftId;
       document.getElementById("endRole").value = role;
+      document.getElementById("endPhotoOnly").value = photoOnly ? "1" : "0";
       document.getElementById("endMeta").textContent = `${roleNameInShift(role)} · ${role==="host"?s.hostName:supportNameLabel(s)}`;
-      document.getElementById("endDurationText").innerHTML = `Thời gian đang tính: <b>${formatDuration(actualMs(s[role]))}</b>. Sau khi xác nhận sẽ chốt vào báo cáo.`;
+      document.getElementById("endDurationText").innerHTML = photoOnly ? `Thời gian đã chốt: <b>${formatDuration(actualMs(s[role]))}</b>. Ảnh checkout bổ sung không đổi giờ kết thúc.` : `Thời gian đang tính: <b>${formatDuration(actualMs(s[role]))}</b>. Sau khi xác nhận sẽ chốt vào báo cáo.`;
+      document.getElementById("confirmEndBtn").textContent = photoOnly ? "Lưu ảnh checkout" : "Xác nhận kết thúc ca live";
       document.getElementById("endNote").value = "";
+      capturedCheckoutPhoto = "";
+      const canvas = document.getElementById("checkoutCameraCanvas");
+      canvas.width = 640; canvas.height = 480;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#f3f4f6"; ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle = "#667085"; ctx.font = "20px Arial"; ctx.fillText("Chưa chụp ảnh checkout", 210, 240);
       openModal("endModal");
+      await startCheckoutCamera();
     }
-    function confirmEndLive(){
+    async function startCheckoutCamera(){
+      stopCamera();
+      try{
+        cameraStream = await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+        document.getElementById("checkoutCameraVideo").srcObject = cameraStream;
+      }catch(e){
+        toast("Không mở được camera. Hãy kiểm tra quyền camera của trình duyệt.");
+      }
+    }
+    function captureCheckoutPhoto(){
+      const video = document.getElementById("checkoutCameraVideo");
+      const canvas = document.getElementById("checkoutCameraCanvas");
+      const w = video.videoWidth || 640;
+      const h = video.videoHeight || 480;
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video,0,0,w,h);
+      ctx.fillStyle = "rgba(0,0,0,.58)"; ctx.fillRect(0,h-48,w,48);
+      ctx.fillStyle = "#fff"; ctx.font = Math.max(16,Math.round(w/34)) + "px Arial";
+      ctx.fillText("Checkout: " + nowText(), 16, h-18);
+      capturedCheckoutPhoto = canvas.toDataURL("image/jpeg",.82);
+      toast("Đã chụp ảnh checkout");
+    }
+    function closeEndModal(){
+      stopCamera();
+      capturedCheckoutPhoto = "";
+      closeModal("endModal");
+    }
+    async function confirmEndLive(){
       const shiftId = document.getElementById("endShiftId").value;
       const role = document.getElementById("endRole").value;
       const s = db.shifts.find(x=>x.id===shiftId);
       if(!s) return;
+      if(!capturedCheckoutPhoto) return toast("Bạn cần chụp ảnh checkout trước");
       const item = s[role];
-      item.endTs = nowTs();
-      item.endTime = nowText();
+      const photoOnly = document.getElementById("endPhotoOnly").value === "1";
+      toast(cloudReady ? "Đang tải ảnh checkout lên cloud..." : "Đang lưu ảnh checkout...");
+      item.checkoutPhoto = await uploadCheckoutPhotoToCloud(shiftId, role, capturedCheckoutPhoto);
+      item.checkoutTime = nowText();
+      item.checkoutTs = nowTs();
+      if(!photoOnly){
+        item.endTs = nowTs();
+        item.endTime = nowText();
+      }
       item.endNote = document.getElementById("endNote").value.trim();
       if(item.endNote){
         db.notes.push({
@@ -4004,14 +4338,14 @@
         module:"employee_input",
         action:`Nhân viên kết thúc ${roleNameInShift(role)}`,
         shift:s,
-        after:{role, endTime:item.endTime, duration:formatDuration(actualMs(item)), endNote:item.endNote},
-        details:{role, endTime:item.endTime, duration:formatDuration(actualMs(item)), hasNote:!!item.endNote},
+        after:{role, endTime:item.endTime, duration:formatDuration(actualMs(item)), endNote:item.endNote, checkoutTime:item.checkoutTime, checkoutPhotoSaved:!!item.checkoutPhoto},
+        details:{role, endTime:item.endTime, duration:formatDuration(actualMs(item)), hasNote:!!item.endNote, hasCheckoutPhoto:!!item.checkoutPhoto, photoOnly},
         employeeInput:true
       });
       saveDB({immediate:true});
-      closeModal("endModal");
+      closeEndModal();
       renderContent();
-      toast("Đã kết thúc live và chốt thời gian thực tế");
+      toast(photoOnly ? "Đã lưu ảnh checkout bổ sung" : "Đã checkout, kết thúc live và chốt thời gian thực tế");
     }
 
     function prepareQuickNote(shiftId){
@@ -4053,7 +4387,10 @@
     function openReportModal(shiftId){
       const s = db.shifts.find(x=>x.id===shiftId);
       if(!s) return;
-      if(!canReport(s)) return toast("Chỉ nhập báo cáo sau khi ca đã kết thúc live");
+      if(!canReport(s)){
+        const missing = checkoutMissingRoles(s);
+        return toast(missing.length ? `Cần bổ sung ảnh checkout: ${missing.join(", ")}` : "Chỉ nhập báo cáo sau khi ca đã kết thúc live");
+      }
       document.getElementById("reportShiftId").value = shiftId;
       document.getElementById("reportMeta").textContent = `${s.date} · ${s.start}-${s.end} · Host ${s.hostName} · Trợ ${supportNameLabel(s)}`;
       const canManageReport = canManageShift(s);
@@ -4063,7 +4400,7 @@
       if(notice){
         notice.classList.toggle("hidden", !(s.report && !canManageReport));
         notice.innerHTML = s.report && !canManageReport
-          ? (pendingReq ? "Bạn đã có yêu cầu sửa báo cáo đang chờ admin duyệt. Nếu bấm lưu, hệ thống sẽ cập nhật lại nội dung yêu cầu chờ duyệt, báo cáo chính chưa thay đổi." : "Báo cáo này đã được gửi. Nhân viên sửa lại sẽ tạo <b>yêu cầu chờ admin duyệt</b>; báo cáo chính chỉ đổi sau khi admin duyệt.")
+          ? (pendingReq ? "Bạn đã có yêu cầu sửa báo cáo đang chờ Admin/Lead Live duyệt. Nếu bấm lưu, hệ thống sẽ cập nhật lại nội dung yêu cầu chờ duyệt, báo cáo chính chưa thay đổi." : "Báo cáo này đã được gửi. Nhân viên sửa lại sẽ tạo <b>yêu cầu chờ duyệt</b>; báo cáo chính chỉ đổi sau khi Admin hoặc Lead Live phụ trách shop duyệt.")
           : "";
       }
       if(submitBtn){
@@ -4080,7 +4417,14 @@
       document.getElementById("reportATC").value = r.atc || 0;
       document.getElementById("reportComments").value = r.comments || 0;
       document.getElementById("reportAvgWatch").value = r.avgWatch || "";
+      document.getElementById("reportMinigameCost").value = Number(r.minigameCost || 0);
+      document.getElementById("reportGmvWetWipes").value = Number(r.gmvWetWipes || 0);
+      document.getElementById("reportGmvNewbornBox").value = Number(r.gmvNewbornBox || 0);
+      const isGooby = String(s.shop || "").toLowerCase().includes("gooby");
+      document.getElementById("goobyWetWipesField").classList.toggle("hidden", !isGooby);
+      document.getElementById("goobyNewbornBoxField").classList.toggle("hidden", !isGooby);
       document.getElementById("reportNote").value = r.note || "";
+      autoReportDerived();
       openModal("reportModal");
     }
 
@@ -4211,7 +4555,8 @@
 
     function renderShopeeConnectPanel(){
       const wrap = document.getElementById("shopeeConnectWrap");
-      if(!wrap || !isAdmin()) return;
+      if(!wrap) return;
+      if(!isAdmin()){ wrap.innerHTML = ""; return; }
       const endpoint = getShopeeSyncEndpoint();
       const connections = shopeeConnectionMap();
       const rows = getChannels().map(ch=>{
@@ -4308,7 +4653,8 @@
     function renderShopeeDiagnosticsPanel(){
       const shiftWrap = document.getElementById("shopeeShiftSyncWrap");
       const logWrap = document.getElementById("shopeeSyncLogWrap");
-      if(!shiftWrap || !logWrap || !currentUser || !isAdmin()) return;
+      if(!shiftWrap || !logWrap || !currentUser) return;
+      if(!isAdmin()){ shiftWrap.innerHTML = ""; logWrap.innerHTML = ""; return; }
       const endpoint = getShopeeSyncEndpoint();
       const connections = shopeeConnectionMap();
       const channels = getChannels();
@@ -4645,11 +4991,18 @@
       }
     }
 
-    function autoAOV(){
+    function autoReportDerived(){
       const gmv = Number(document.getElementById("reportGMV").value || 0);
       const orders = Number(document.getElementById("reportOrders").value || 0);
-      if(orders > 0) document.getElementById("reportAOV").value = Math.round(gmv/orders);
+      document.getElementById("reportAOV").value = orders > 0 ? Math.round(gmv/orders) : 0;
+      const shiftId = document.getElementById("reportShiftId").value;
+      const s = db.shifts.find(x=>x.id === shiftId);
+      const gmvPerHour = s ? calculateGmvPerHour(s, gmv) : 0;
+      document.getElementById("reportGmvPerHour").value = gmvPerHour;
+      const compare = document.getElementById("reportCampaignComparison");
+      if(compare && s) compare.innerHTML = `<b>So sánh KPI campaign:</b><br/>${campaignComparisonHtml(s, gmv)}`;
     }
+    function autoAOV(){ autoReportDerived(); }
     function submitReport(){
       const shiftId = document.getElementById("reportShiftId").value;
       const s = db.shifts.find(x=>x.id===shiftId);
@@ -4668,6 +5021,11 @@
         atc:Number(document.getElementById("reportATC").value || 0),
         comments:Number(document.getElementById("reportComments").value || 0),
         avgWatch:document.getElementById("reportAvgWatch").value.trim(),
+        minigameCost:Number(document.getElementById("reportMinigameCost").value || 0),
+        gmvPerHour:calculateGmvPerHour(s, Number(document.getElementById("reportGMV").value || 0)),
+        gmvWetWipes:String(s.shop || "").toLowerCase().includes("gooby") ? Number(document.getElementById("reportGmvWetWipes").value || 0) : 0,
+        gmvNewbornBox:String(s.shop || "").toLowerCase().includes("gooby") ? Number(document.getElementById("reportGmvNewbornBox").value || 0) : 0,
+        campaign:shiftCampaignInfo(s),
         note:document.getElementById("reportNote").value.trim(),
         submittedAt: oldReport?.submittedAt || nowText(),
         submittedBy: oldReport?.submittedBy || currentUser.name,
@@ -4692,7 +5050,7 @@
         saveDB({immediate:true});
         closeModal("reportModal");
         renderContent();
-        toast("Đã gửi yêu cầu sửa báo cáo, chờ admin duyệt");
+        toast("Đã gửi yêu cầu sửa báo cáo, chờ Admin/Lead Live duyệt");
         return;
       }
 
@@ -4730,7 +5088,19 @@
       const s = db.shifts.find(x=>x.id===shiftId);
       if(!s || !s[role].photo) return;
       document.getElementById("photoPreview").src = s[role].photo;
+      document.getElementById("photoTitle").textContent = "Ảnh check-in";
       document.getElementById("photoMeta").textContent = `${roleNameInShift(role)} · ${role==="host"?s.hostName:supportNameLabel(s)} · ${s[role].checkinTime}`;
+      openModal("photoModal");
+    }
+
+    function openCheckoutPhoto(shiftId, role){
+      const s = db.shifts.find(x=>x.id===shiftId);
+      if(!s || !s[role]?.checkoutPhoto) return;
+      if(!isAdmin() && !isLeadLive()) return toast("Chỉ Admin hoặc Lead Live được xem ảnh checkout");
+      if(isLeadLive() && !canViewShift(s)) return toast("Bạn không phụ trách shop này");
+      document.getElementById("photoPreview").src = s[role].checkoutPhoto;
+      document.getElementById("photoTitle").textContent = "Ảnh checkout";
+      document.getElementById("photoMeta").textContent = `${roleNameInShift(role)} · ${role==="host"?s.hostName:supportNameLabel(s)} · ${s[role].checkoutTime || s[role].endTime || "-"}`;
       openModal("photoModal");
     }
 
@@ -4748,10 +5118,14 @@
     }
 
     function exportXLS(){
-      const shifts = visibleShifts();
+      const shifts = visibleShifts().filter(s=>!isEmployee() || isParticipant(s));
+      if(!shifts.length) return toast("Không có ca live bạn tham gia để xuất XLS");
 
       const headers = [
         "Ngày",
+        "Loại campaign",
+        "KPI campaign",
+        "Tiến độ KPI campaign",
         "Giờ dự kiến",
         "Kênh bán",
         "Host live",
@@ -4765,9 +5139,15 @@
         "CO",
         "View",
         "AOV",
+        "GMV / giờ live thực tế",
+        "Chi phí Minigame",
+        "GMV khăn ướt (phụ)",
+        "GMV Box Newborn (phụ)",
         "Lượt add to cart",
         "Lượt bình luận",
         "Thời gian xem trung bình",
+        "Ảnh checkout Host",
+        "Ảnh checkout Trợ live",
         "Trạng thái"
       ];
 
@@ -4775,8 +5155,13 @@
         const st = computeShiftStatus(s);
         const r = effectiveReport(s);
         const aov = r.aov || (r.orders ? Math.round(r.gmv/r.orders) : 0);
+        const campaign = shiftCampaignInfo(s);
+        const campaignPct = campaign.target > 0 ? Math.round(Number(r.gmv || 0)/campaign.target*100) : 0;
         return [
           s.date,
+          campaign.label,
+          campaign.target || 0,
+          campaign.target ? `${campaignPct}%` : "",
           `${s.start}-${s.end}`,
           s.shop,
           s.hostName,
@@ -4790,9 +5175,15 @@
           r.co || "",
           r.view || 0,
           aov || 0,
+          calculateGmvPerHour(s, r.gmv),
+          r.minigameCost || 0,
+          r.gmvWetWipes || 0,
+          r.gmvNewbornBox || 0,
           r.atc || 0,
           r.comments || 0,
           r.avgWatch || "",
+          (isAdmin() || isLeadLive()) ? (s.host.checkoutPhoto || "") : "",
+          (isAdmin() || isLeadLive()) ? (s.support.checkoutPhoto || "") : "",
           st.label
         ];
       });
