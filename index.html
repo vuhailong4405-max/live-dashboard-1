@@ -2075,7 +2075,10 @@
 
     async function uploadCheckinPhotoToCloud(shiftId, role, dataUrl){
       if(!dataUrl) return "";
-      if(hasFirebaseConfig() && (!cloudReady || !cloudStorage)) throw new Error("Đang mất kết nối cloud nên chưa thể lưu ảnh check-in. Hãy kiểm tra mạng và thử lại.");
+      if(hasFirebaseConfig() && (!cloudReady || !cloudStorage)){
+        warnStorage("Cloud đang mất kết nối; ảnh check-in được lưu bằng bản nén dự phòng.");
+        return dataUrl;
+      }
       if(!hasFirebaseConfig()) return dataUrl;
       try{
         const safeRole = role === "host" ? "host" : "support";
@@ -2085,13 +2088,17 @@
         return await snapshot.ref.getDownloadURL();
       }catch(e){
         console.error("Không upload được ảnh check-in lên Storage", e);
-        throw new Error("Không upload được ảnh check-in lên Storage. Chưa ghi nhận check-in để tránh mất ảnh.");
+        warnStorage("Firebase Storage đang từ chối upload; ảnh check-in được lưu bằng bản nén dự phòng.");
+        return dataUrl;
       }
     }
 
     async function uploadCheckoutPhotoToCloud(shiftId, role, dataUrl){
       if(!dataUrl) return "";
-      if(hasFirebaseConfig() && (!cloudReady || !cloudStorage)) throw new Error("Đang mất kết nối cloud nên chưa thể lưu ảnh checkout. Hãy kiểm tra mạng và thử lại.");
+      if(hasFirebaseConfig() && (!cloudReady || !cloudStorage)){
+        warnStorage("Cloud đang mất kết nối; ảnh checkout được lưu bằng bản nén dự phòng.");
+        return dataUrl;
+      }
       if(!hasFirebaseConfig()) return dataUrl;
       try{
         const safeRole = role === "report" ? "report" : (role === "host" ? "host" : "support");
@@ -2101,7 +2108,8 @@
         return await snapshot.ref.getDownloadURL();
       }catch(e){
         console.error("Không upload được ảnh checkout lên Storage", e);
-        throw new Error("Không upload được ảnh checkout lên Storage. Chưa mở báo cáo để tránh mất ảnh.");
+        warnStorage("Firebase Storage đang từ chối upload; ảnh checkout được lưu bằng bản nén dự phòng.");
+        return dataUrl;
       }
     }
 
@@ -4628,6 +4636,7 @@
         item.checkinTs = nowTs();
         item.checkinTime = nowText();
         item.photo = photoUrl;
+        item.photoStorageMode = /^data:/i.test(photoUrl) ? "compressed_fallback" : "firebase_storage";
         if(liveInput){
           s.shopeeLiveUrl = liveInput;
           s.shopeeLiveId = liveId;
@@ -4651,7 +4660,8 @@
         const result = await saveDB({immediate:true});
         closeCheckinModal();
         renderContent();
-        toast(result.ok || result.localOnly ? "Đã bắt đầu live và tính giờ theo thời gian thực" : "Đã lưu trên máy; cloud đang tự đồng bộ lại");
+        const fallbackText = item.photoStorageMode === "compressed_fallback" ? "Đã check-in; ảnh đang lưu bằng bản nén dự phòng" : "Đã bắt đầu live và tính giờ theo thời gian thực";
+        toast(result.ok || result.localOnly ? fallbackText : "Đã lưu trên máy; cloud đang tự đồng bộ lại");
       }catch(e){
         console.error("Không check-in được",e);
         toast(e?.message || "Không check-in được");
@@ -4797,6 +4807,7 @@
         const photoUrl = await uploadCheckoutPhotoToCloud(shiftId, "report", capturedCheckoutPhoto);
         if(s.reportCheckoutPhoto) throw new Error("Ảnh checkout đã được ghi nhận trước đó");
         s.reportCheckoutPhoto = photoUrl;
+        s.reportCheckoutPhotoStorageMode = /^data:/i.test(photoUrl) ? "compressed_fallback" : "firebase_storage";
         s.reportCheckoutTime = nowText();
         s.reportCheckoutTs = nowTs();
         s.reportCheckoutById = currentUser.id;
@@ -4805,6 +4816,7 @@
         await saveDB({immediate:true});
         closeReportCheckoutModal();
         renderContent();
+        if(s.reportCheckoutPhotoStorageMode === "compressed_fallback") toast("Đã lưu ảnh checkout bằng bản nén dự phòng");
         openReportModal(shiftId, true);
       }catch(e){
         console.error("Không lưu được ảnh checkout",e);
