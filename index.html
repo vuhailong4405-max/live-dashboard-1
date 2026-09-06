@@ -1544,12 +1544,32 @@
           <h3>Kết thúc ca live</h3>
           <div class="meta" id="endMeta">---</div>
         </div>
-        <button class="close" onclick="closeEndModal()">×</button>
+        <button class="close" onclick="closeModal('endModal')">×</button>
       </div>
       <input type="hidden" id="endShiftId">
       <input type="hidden" id="endRole">
-      <input type="hidden" id="endPhotoOnly" value="0">
       <div class="warning-note" id="endDurationText">Thời gian live sẽ được chốt vào báo cáo.</div>
+      <div class="form-field">
+        <label>Ghi chú khi kết thúc nếu có</label>
+        <textarea id="endNote" placeholder="Ví dụ: Kết thúc đúng giờ, phát sinh lỗi mạng, khách hỏi nhiều về giá..."></textarea>
+      </div>
+      <div class="actions">
+        <button class="red" onclick="confirmEndLive()">Xác nhận kết thúc ca live</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="reportCheckoutModal" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h3>Chụp ảnh checkout trước khi báo cáo</h3>
+          <div class="meta" id="reportCheckoutMeta">---</div>
+        </div>
+        <button class="close" onclick="closeReportCheckoutModal()">×</button>
+      </div>
+      <input type="hidden" id="reportCheckoutShiftId">
+      <div class="warning-note">Ca live đã kết thúc. Bạn cần chụp ảnh checkout một lần, sau đó hệ thống sẽ tự mở phần nhập báo cáo.</div>
       <div class="camera-box">
         <div>
           <video id="checkoutCameraVideo" autoplay="" playsinline=""></video>
@@ -1560,15 +1580,11 @@
         </div>
         <div>
           <canvas id="checkoutCameraCanvas"></canvas>
-          <div class="warning-note">Bắt buộc chụp ảnh checkout trước khi xác nhận. Ảnh được lưu để Lead Live và Admin kiểm tra.</div>
+          <div class="warning-note">Ảnh checkout được lưu cùng báo cáo và chỉ Admin hoặc Lead Live phụ trách shop được xem.</div>
         </div>
       </div>
-      <div class="form-field">
-        <label>Ghi chú khi kết thúc nếu có</label>
-        <textarea id="endNote" placeholder="Ví dụ: Kết thúc đúng giờ, phát sinh lỗi mạng, khách hỏi nhiều về giá..."></textarea>
-      </div>
       <div class="actions">
-        <button id="confirmEndBtn" class="red" onclick="confirmEndLive()">Xác nhận kết thúc ca live</button>
+        <button class="green" onclick="confirmReportCheckout()">Lưu ảnh &amp; mở báo cáo</button>
       </div>
     </div>
   </div>
@@ -1712,6 +1728,20 @@
     let cloudUnsubscribe = null;
     let syncingFromCloud = false;
     let saveTimer = null;
+    let pendingSaveResolvers = [];
+    let lastSyncedDb = null;
+    let localDirty = false;
+    let cloudWriteInFlight = 0;
+    let cloudSaveQueue = Promise.resolve();
+    let cloudRetryTimer = null;
+    let cloudReconnectTimer = null;
+    let lastCloudSaveError = "";
+    let lastStorageToastAt = 0;
+    const MAX_CLOUD_DOCUMENT_BYTES = 900000;
+    const MAIN_LOG_RETENTION = 350;
+    const MAIN_HISTORY_RETENTION = 500;
+    const REVIEWED_REQUEST_RETENTION = 150;
+    const STORAGE_SCHEMA_VERSION = 5;
 
     let db = null;
     let currentUser = null;
@@ -1721,12 +1751,37 @@
     let cameraStream = null;
     let capturedPhoto = "";
     let capturedCheckoutPhoto = "";
+    const actionLocks = new Set();
 
     function id(){ return "id_" + Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
-    function todayISO(){ return new Date().toISOString().slice(0,10); }
+    function todayISO(){
+      const parts = new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Ho_Chi_Minh",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
+      const value = Object.fromEntries(parts.map(p=>[p.type,p.value]));
+      return `${value.year}-${value.month}-${value.day}`;
+    }
     function nowTs(){ return Date.now(); }
     function nowText(){
       return new Date().toLocaleString("vi-VN",{hour:"2-digit",minute:"2-digit",second:"2-digit",day:"2-digit",month:"2-digit",year:"numeric"});
+    }
+    function beginAction(key){
+      if(actionLocks.has(key)){ toast("Thao tác đang được xử lý, vui lòng chờ"); return false; }
+      actionLocks.add(key); return true;
+    }
+    function endAction(key){ actionLocks.delete(key); }
+    function scaledCanvasSnapshot(video,canvas,label){
+      if(!video || video.readyState < 2 || !video.videoWidth) throw new Error("Camera chưa sẵn sàng, vui lòng chờ vài giây rồi chụp lại");
+      const sourceW = video.videoWidth || 640;
+      const sourceH = video.videoHeight || 480;
+      const scale = Math.min(1,960/sourceW,720/sourceH);
+      const w = Math.max(1,Math.round(sourceW*scale));
+      const h = Math.max(1,Math.round(sourceH*scale));
+      canvas.width=w; canvas.height=h;
+      const ctx=canvas.getContext("2d");
+      ctx.drawImage(video,0,0,w,h);
+      ctx.fillStyle="rgba(0,0,0,.58)"; ctx.fillRect(0,h-48,w,48);
+      ctx.fillStyle="#fff"; ctx.font=Math.max(16,Math.round(w/34))+"px Arial";
+      ctx.fillText(label+nowText(),16,h-18);
+      return canvas.toDataURL("image/jpeg",.65);
     }
     function clockText(){ return new Date().toLocaleString("vi-VN",{hour:"2-digit",minute:"2-digit",second:"2-digit",day:"2-digit",month:"2-digit",year:"numeric"}); }
     function money(n){
@@ -1783,6 +1838,125 @@
       }
     }
 
+    function deepEqual(a,b){
+      if(a === b) return true;
+      try{ return JSON.stringify(a) === JSON.stringify(b); }catch(e){ return false; }
+    }
+    function isPlainObject(value){
+      return !!value && typeof value === "object" && !Array.isArray(value);
+    }
+    function isEntityArray(values){
+      const items = values.flat().filter(v=>v !== undefined && v !== null);
+      return items.length > 0 && items.every(v=>isPlainObject(v) && v.id !== undefined && v.id !== null && String(v.id) !== "");
+    }
+    function mergeEntityArrays(base,local,remote){
+      const baseMap = new Map(base.map(x=>[String(x.id),x]));
+      const localMap = new Map(local.map(x=>[String(x.id),x]));
+      const remoteMap = new Map(remote.map(x=>[String(x.id),x]));
+      const orderedIds = [...remote.map(x=>String(x.id)), ...local.map(x=>String(x.id))].filter((v,i,a)=>a.indexOf(v)===i);
+      const out = [];
+      orderedIds.forEach(key=>{
+        const hadBase = baseMap.has(key), hasLocal = localMap.has(key), hasRemote = remoteMap.has(key);
+        if(hadBase && !hasLocal) return; // xóa cục bộ có chủ đích
+        if(hadBase && hasLocal && !hasRemote){
+          if(!deepEqual(localMap.get(key),baseMap.get(key))) out.push(cloneData(localMap.get(key)));
+          return;
+        }
+        if(!hasLocal && hasRemote){ out.push(cloneData(remoteMap.get(key))); return; }
+        if(hasLocal && !hadBase){
+          out.push(hasRemote ? threeWayMerge({},localMap.get(key),remoteMap.get(key)) : cloneData(localMap.get(key)));
+          return;
+        }
+        if(hasLocal && hasRemote){ out.push(threeWayMerge(baseMap.get(key),localMap.get(key),remoteMap.get(key))); return; }
+        if(hasLocal) out.push(cloneData(localMap.get(key)));
+      });
+      return out;
+    }
+    function threeWayMerge(base,local,remote){
+      if(deepEqual(local,base)) return cloneData(remote);
+      if(Array.isArray(base) && Array.isArray(local) && Array.isArray(remote)){
+        return isEntityArray([base,local,remote]) ? mergeEntityArrays(base,local,remote) : cloneData(local);
+      }
+      if(isPlainObject(base) && isPlainObject(local) && isPlainObject(remote)){
+        const out = cloneData(remote) || {};
+        const keys = new Set([...Object.keys(base),...Object.keys(local),...Object.keys(remote)]);
+        keys.forEach(key=>{
+          const hadBase = Object.prototype.hasOwnProperty.call(base,key);
+          const hasLocal = Object.prototype.hasOwnProperty.call(local,key);
+          const hasRemote = Object.prototype.hasOwnProperty.call(remote,key);
+          if(hadBase && !hasLocal){ delete out[key]; return; }
+          if(!hasLocal){ if(!hasRemote) delete out[key]; return; }
+          if(!hadBase){ out[key] = cloneData(local[key]); return; }
+          if(!hasRemote){
+            if(deepEqual(local[key],base[key])) delete out[key];
+            else out[key] = cloneData(local[key]);
+            return;
+          }
+          out[key] = threeWayMerge(base[key],local[key],remote[key]);
+        });
+        return out;
+      }
+      return cloneData(local);
+    }
+    function mergeWorkerSnapshot(current,incoming){
+      if(!current) return cloneData(incoming);
+      const next = cloneData(current);
+      const incomingShiftMap = new Map((incoming?.shifts || []).map(s=>[String(s.id),s]));
+      (next.shifts || []).forEach(shift=>{
+        const remoteShift = incomingShiftMap.get(String(shift.id));
+        if(!remoteShift) return;
+        if(remoteShift.shopeeLiveMetrics !== undefined) shift.shopeeLiveMetrics = cloneData(remoteShift.shopeeLiveMetrics);
+        if(remoteShift.shopeeMetrics !== undefined) shift.shopeeMetrics = cloneData(remoteShift.shopeeMetrics);
+      });
+      next.settings = next.settings || {};
+      Object.entries(incoming?.settings || {}).forEach(([key,value])=>{
+        if(/^shopee/i.test(key)) next.settings[key] = cloneData(value);
+      });
+      next.dataLogs = mergeEntityArrays(next.dataLogs || [],next.dataLogs || [],incoming?.dataLogs || []);
+      return next;
+    }
+    function mergeOfflineDb(local,remote){
+      const next = {...cloneData(remote),...cloneData(local)};
+      ["accounts","shifts","notes","histories","dataLogs","reportEditRequests","lateReportRequests"].forEach(key=>{
+        const localList = Array.isArray(local?.[key]) ? local[key] : [];
+        const remoteList = Array.isArray(remote?.[key]) ? remote[key] : [];
+        next[key] = mergeEntityArrays([],localList,remoteList);
+      });
+      next.settings = {...cloneData(remote?.settings || {}),...cloneData(local?.settings || {})};
+      next.channels = [...new Set([...(remote?.channels || []),...(local?.channels || [])])];
+      return next;
+    }
+    function dedupeEntities(items=[]){
+      const map = new Map();
+      items.forEach(item=>{ if(item?.id) map.set(String(item.id),item); });
+      return Array.from(map.values());
+    }
+    function keepPendingAndRecent(items=[],limit=REVIEWED_REQUEST_RETENTION){
+      const pending = items.filter(x=>x?.status === "pending" || (x?.status === "approved" && !x?.consumed));
+      const completed = items.filter(x=>!pending.includes(x)).sort((a,b)=>Number(b.reviewedTs || b.ts || 0)-Number(a.reviewedTs || a.ts || 0)).slice(0,limit);
+      return dedupeEntities([...pending,...completed]);
+    }
+    function applyOperationalBounds(target){
+      if(!target || typeof target !== "object") return target;
+      target.schemaVersion = STORAGE_SCHEMA_VERSION;
+      target.accounts = dedupeEntities(target.accounts || []);
+      target.shifts = dedupeEntities(target.shifts || []);
+      target.notes = dedupeEntities(target.notes || []);
+      target.histories = dedupeEntities(target.histories || []).sort((a,b)=>Number(a.ts||0)-Number(b.ts||0)).slice(-MAIN_HISTORY_RETENTION);
+      target.dataLogs = dedupeEntities(target.dataLogs || []).sort((a,b)=>Number(a.ts||0)-Number(b.ts||0)).slice(-MAIN_LOG_RETENTION);
+      target.reportEditRequests = keepPendingAndRecent(target.reportEditRequests || []);
+      target.lateReportRequests = keepPendingAndRecent(target.lateReportRequests || []);
+      target.channels = [...new Map((target.channels || []).map(x=>[String(x||"").trim().toLowerCase(),String(x||"").trim()])).values()].filter(Boolean);
+      return target;
+    }
+    function cloudDocumentSizeBytes(target){
+      try{ return new TextEncoder().encode(JSON.stringify({data:target})).length; }catch(e){ return Number.MAX_SAFE_INTEGER; }
+    }
+    function warnStorage(message){
+      lastCloudSaveError = String(message || "");
+      if(Date.now() - lastStorageToastAt > 5000){ lastStorageToastAt = Date.now(); toast(lastCloudSaveError); }
+    }
+
     function applyDbDefaults(){
       if(!db) return;
       if(!Array.isArray(db.accounts)) db.accounts = [];
@@ -1792,6 +1966,7 @@
       if(!db.histories || !Array.isArray(db.histories)) db.histories = [];
       if(!db.dataLogs || !Array.isArray(db.dataLogs)) db.dataLogs = [];
       if(!db.reportEditRequests || !Array.isArray(db.reportEditRequests)) db.reportEditRequests = [];
+      if(!db.lateReportRequests || !Array.isArray(db.lateReportRequests)) db.lateReportRequests = [];
       if(!db.settings || typeof db.settings !== "object") db.settings = {};
       if(!db.settings.campaignKpiByMonth || typeof db.settings.campaignKpiByMonth !== "object") db.settings.campaignKpiByMonth = {};
       if(!db.settings.shopeeConnections || typeof db.settings.shopeeConnections !== "object") db.settings.shopeeConnections = {};
@@ -1809,6 +1984,10 @@
         if(!r.status) r.status = "pending";
         if(!r.changes || !Array.isArray(r.changes)) r.changes = buildHistoryChanges(r.before || {}, r.after || {}, REPORT_HISTORY_FIELDS);
         if(!r.participantIds || !Array.isArray(r.participantIds)) r.participantIds = [];
+      });
+      db.lateReportRequests.forEach(r=>{
+        if(!r.status) r.status = "pending";
+        if(r.consumed === undefined) r.consumed = false;
       });
       db.accounts.forEach(a=>{
         // Tự chuyển dữ liệu cũ: tài khoản Host/Trợ live đều trở thành Nhân viên.
@@ -1831,6 +2010,7 @@
         if(!s.shopeeLiveId) s.shopeeLiveId = parseShopeeLiveId(s.shopeeLiveUrl);
         if(!s.shopeeLiveMetrics || typeof s.shopeeLiveMetrics !== "object") s.shopeeLiveMetrics = {};
       });
+      applyOperationalBounds(db);
     }
 
     async function loadLocalDB(){
@@ -1842,10 +2022,26 @@
         catch(e){ await seedDB(); }
       }
       applyDbDefaults();
+      lastSyncedDb = null;
+      localDirty = true;
     }
 
     function cloudStatusText(){
-      return cloudReady ? "Cloud Firestore: đang đồng bộ nhiều máy" : "LocalStorage: dữ liệu chỉ lưu trên máy này";
+      if(cloudReady && localDirty) return "Cloud Firestore: đang đồng bộ thay đổi";
+      if(cloudReady && lastCloudSaveError) return "Cloud Firestore: có lỗi lưu, hệ thống đang thử lại";
+      return cloudReady ? "Cloud Firestore: đã đồng bộ nhiều máy" : "LocalStorage: dữ liệu chỉ lưu trên máy này";
+    }
+
+    function persistLocalSnapshot(){
+      if(!db) return true;
+      try{
+        localStorage.setItem(DB_KEY, JSON.stringify(db));
+        return true;
+      }catch(e){
+        console.error("Không lưu được LocalStorage", e);
+        warnStorage("Bộ nhớ trình duyệt đã đầy. Dữ liệu vẫn được giữ trên màn hình và sẽ thử lưu lên cloud.");
+        return false;
+      }
     }
 
     function startCloudRealtimeSync(){
@@ -1854,26 +2050,33 @@
         if(!snap.exists) return;
         const payload = snap.data() || {};
         if(!payload.data) return;
-        const incoming = payload.data;
-        try{
-          if(JSON.stringify(incoming) === JSON.stringify(db)) return;
-        }catch(e){}
+        let incoming = cloneData(payload.data);
+        applyOperationalBounds(incoming);
+        if(/worker|shopee/i.test(String(payload.updatedBy || "")) && db){
+          incoming = mergeWorkerSnapshot(db,incoming);
+          applyOperationalBounds(incoming);
+        }
+        if(deepEqual(incoming,lastSyncedDb) && !localDirty) return;
         syncingFromCloud = true;
-        db = incoming;
+        db = localDirty && lastSyncedDb ? threeWayMerge(lastSyncedDb,db,incoming) : incoming;
+        lastSyncedDb = cloneData(incoming);
         applyDbDefaults();
-        try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
+        persistLocalSnapshot();
         const userId = sessionStorage.getItem(SESSION_KEY);
         currentUser = db.accounts.find(a=>a.id === userId) || null;
         renderApp();
         syncingFromCloud = false;
+        if(localDirty) scheduleCloudRetry(250);
       },err=>{
         console.error("Lỗi realtime Firestore", err);
-        toast("Lỗi đồng bộ Firestore, kiểm tra Rules/Firebase config");
+        warnStorage("Lỗi đồng bộ Firestore. Dữ liệu cục bộ vẫn được giữ và hệ thống sẽ thử lại.");
       });
     }
 
     async function uploadCheckinPhotoToCloud(shiftId, role, dataUrl){
-      if(!cloudReady || !cloudStorage || !dataUrl) return dataUrl;
+      if(!dataUrl) return "";
+      if(hasFirebaseConfig() && (!cloudReady || !cloudStorage)) throw new Error("Đang mất kết nối cloud nên chưa thể lưu ảnh check-in. Hãy kiểm tra mạng và thử lại.");
+      if(!hasFirebaseConfig()) return dataUrl;
       try{
         const safeRole = role === "host" ? "host" : "support";
         const path = `checkins/${shiftId}/${safeRole}_${Date.now()}.jpg`;
@@ -1882,23 +2085,23 @@
         return await snapshot.ref.getDownloadURL();
       }catch(e){
         console.error("Không upload được ảnh check-in lên Storage", e);
-        toast("Không upload được ảnh lên Storage, tạm lưu ảnh trong dữ liệu");
-        return dataUrl;
+        throw new Error("Không upload được ảnh check-in lên Storage. Chưa ghi nhận check-in để tránh mất ảnh.");
       }
     }
 
     async function uploadCheckoutPhotoToCloud(shiftId, role, dataUrl){
-      if(!cloudReady || !cloudStorage || !dataUrl) return dataUrl;
+      if(!dataUrl) return "";
+      if(hasFirebaseConfig() && (!cloudReady || !cloudStorage)) throw new Error("Đang mất kết nối cloud nên chưa thể lưu ảnh checkout. Hãy kiểm tra mạng và thử lại.");
+      if(!hasFirebaseConfig()) return dataUrl;
       try{
-        const safeRole = role === "host" ? "host" : "support";
+        const safeRole = role === "report" ? "report" : (role === "host" ? "host" : "support");
         const path = `checkouts/${shiftId}/${safeRole}_${Date.now()}.jpg`;
         const photoRef = cloudStorage.ref(path);
         const snapshot = await photoRef.putString(dataUrl, "data_url");
         return await snapshot.ref.getDownloadURL();
       }catch(e){
         console.error("Không upload được ảnh checkout lên Storage", e);
-        toast("Không upload được ảnh checkout lên Storage, tạm lưu ảnh trong dữ liệu");
-        return dataUrl;
+        throw new Error("Không upload được ảnh checkout lên Storage. Chưa mở báo cáo để tránh mất ảnh.");
       }
     }
 
@@ -1949,7 +2152,9 @@
           if(snap.exists && snap.data() && snap.data().data){
             db = snap.data().data;
             applyDbDefaults();
-            localStorage.setItem(DB_KEY, JSON.stringify(db));
+            lastSyncedDb = cloneData(db);
+            localDirty = false;
+            persistLocalSnapshot();
           }else{
             const raw = localStorage.getItem(DB_KEY);
             if(raw){
@@ -1965,6 +2170,7 @@
           console.error("Không đọc được Firestore, chuyển sang LocalStorage", e);
           cloudReady = false;
           await loadLocalDB();
+          scheduleCloudReconnect();
         }
       }else{
         await loadLocalDB();
@@ -1976,28 +2182,114 @@
       if(cloudReady) startCloudRealtimeSync();
     }
 
-    function saveDB(options={}){
-      if(!db) return Promise.resolve();
-      try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){ console.error("Không lưu được LocalStorage", e); }
-      if(!cloudReady || !cloudDocRef || syncingFromCloud) return Promise.resolve();
+    function scheduleCloudRetry(delay=5000){
+      if(cloudRetryTimer || !cloudReady || !localDirty) return;
+      cloudRetryTimer = setTimeout(()=>{
+        cloudRetryTimer = null;
+        saveDB({immediate:true,retry:true});
+      },Math.max(250,delay));
+    }
 
-      const write = () => cloudDocRef.set({
-        data: cloneData(db),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAtText: nowText(),
-        updatedBy: currentUser ? currentUser.name : "system"
-      }, {merge:true}).catch(err=>{
-        console.error("Không lưu được Firestore", err);
-        toast("Không lưu được lên Firestore, kiểm tra mạng/Rules");
-      });
+    function scheduleCloudReconnect(delay=12000){
+      if(cloudReconnectTimer || cloudReady || !hasFirebaseConfig()) return;
+      cloudReconnectTimer = setTimeout(async()=>{
+        cloudReconnectTimer = null;
+        if(!initCloudDB()){ scheduleCloudReconnect(30000); return; }
+        try{
+          const snap = await cloudDocRef.get();
+          const remote = snap.exists && snap.data()?.data ? cloneData(snap.data().data) : null;
+          if(remote){
+            db = mergeOfflineDb(db,remote);
+            lastSyncedDb = remote;
+            localDirty = true;
+            applyDbDefaults();
+            persistLocalSnapshot();
+          }
+          startCloudRealtimeSync();
+          await saveDB({immediate:true,retry:true});
+          renderApp();
+          toast("Đã kết nối lại và đồng bộ dữ liệu cloud");
+        }catch(e){
+          console.error("Chưa kết nối lại được Firestore",e);
+          cloudReady = false;
+          scheduleCloudReconnect(30000);
+        }
+      },Math.max(1000,delay));
+    }
 
-      if(options.immediate){
-        if(saveTimer){ clearTimeout(saveTimer); saveTimer = null; }
-        return write();
+    async function flushCloudSave(){
+      if(!cloudReady || !cloudDB || !cloudDocRef || !db) return {ok:false,localOnly:true};
+      const requestedLocal = cloneData(db);
+      const requestedBase = lastSyncedDb ? cloneData(lastSyncedDb) : null;
+      applyOperationalBounds(requestedLocal);
+      cloudWriteInFlight++;
+      try{
+        const merged = await cloudDB.runTransaction(async transaction=>{
+          const snap = await transaction.get(cloudDocRef);
+          const remote = snap.exists && snap.data()?.data ? cloneData(snap.data().data) : null;
+          const next = !remote || !requestedBase ? cloneData(requestedLocal) : threeWayMerge(requestedBase,requestedLocal,remote);
+          applyOperationalBounds(next);
+          const bytes = cloudDocumentSizeBytes(next);
+          if(bytes > MAX_CLOUD_DOCUMENT_BYTES) throw new Error(`Dữ liệu dashboard quá lớn (${Math.round(bytes/1024)}KB). Không ghi đè cloud để tránh hỏng document.`);
+          transaction.set(cloudDocRef,{
+            data:next,
+            schemaVersion:STORAGE_SCHEMA_VERSION,
+            documentBytes:bytes,
+            updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAtText:nowText(),
+            updatedBy:currentUser ? currentUser.name : "system"
+          },{merge:true});
+          return next;
+        });
+        const newerLocal = cloneData(db);
+        db = threeWayMerge(requestedLocal,newerLocal,merged);
+        applyDbDefaults();
+        lastSyncedDb = cloneData(merged);
+        localDirty = !deepEqual(db,merged);
+        lastCloudSaveError = "";
+        persistLocalSnapshot();
+        if(localDirty) scheduleCloudRetry(250);
+        return {ok:true};
+      }catch(err){
+        console.error("Không lưu được Firestore",err);
+        localDirty = true;
+        warnStorage(err?.message || "Không lưu được lên Firestore. Dữ liệu cục bộ vẫn được giữ.");
+        scheduleCloudRetry(5000);
+        return {ok:false,error:err};
+      }finally{
+        cloudWriteInFlight = Math.max(0,cloudWriteInFlight-1);
       }
-      if(saveTimer) clearTimeout(saveTimer);
-      saveTimer = setTimeout(write, 280);
-      return Promise.resolve();
+    }
+
+    function saveDB(options={}){
+      if(!db) return Promise.resolve({ok:false});
+      applyDbDefaults();
+      localDirty = true;
+      persistLocalSnapshot();
+      if(!cloudReady || !cloudDocRef){ scheduleCloudReconnect(); return Promise.resolve({ok:true,localOnly:true}); }
+      if(syncingFromCloud) return Promise.resolve({ok:true,queued:true});
+      if(saveTimer){ clearTimeout(saveTimer); saveTimer = null; }
+      if(!options.immediate){
+        return new Promise(resolve=>{
+          pendingSaveResolvers.push(resolve);
+          saveTimer = setTimeout(()=>{
+            saveTimer = null;
+            cloudSaveQueue = cloudSaveQueue.then(()=>flushCloudSave());
+            cloudSaveQueue.then(result=>{
+              const resolvers = pendingSaveResolvers.splice(0);
+              resolvers.forEach(done=>done(result));
+            });
+          },280);
+        });
+      }
+      cloudSaveQueue = cloudSaveQueue.then(()=>flushCloudSave());
+      if(pendingSaveResolvers.length){
+        cloudSaveQueue.then(result=>{
+          const resolvers = pendingSaveResolvers.splice(0);
+          resolvers.forEach(done=>done(result));
+        });
+      }
+      return cloudSaveQueue;
     }
 
     function toast(msg){
@@ -2047,8 +2339,8 @@
     function roleNameInShift(role){ return role === "host" ? "Host live" : "Trợ live"; }
 
     function shiftScheduledRangeMs(shift){
-      const start = Date.parse(`${shift?.date || ""}T${shift?.start || "00:00"}:00`);
-      let end = Date.parse(`${shift?.date || ""}T${shift?.end || "00:00"}:00`);
+      const start = Date.parse(`${shift?.date || ""}T${shift?.start || "00:00"}:00+07:00`);
+      let end = Date.parse(`${shift?.date || ""}T${shift?.end || "00:00"}:00+07:00`);
       if(!Number.isFinite(start) || !Number.isFinite(end)) return null;
       if(end <= start) end += 24 * 60 * 60 * 1000;
       return {start,end};
@@ -2121,7 +2413,8 @@
       const localReason = supportOpenShiftReason(localShift);
       if(localReason) return toast(localReason);
       if(!confirm(`Tham gia trợ live ca ${localShift.date} · ${localShift.start}-${localShift.end} · ${localShift.shop}?`)) return;
-
+      const actionKey = `join-support:${shiftId}:${currentUser.id}`;
+      if(!beginAction(actionKey)) return;
       try{
         if(cloudReady && cloudDB && cloudDocRef){
           const result = await cloudDB.runTransaction(async transaction=>{
@@ -2140,8 +2433,13 @@
             remoteShift.supportJoinedAt = nowText();
             remoteShift.supportJoinedTs = nowTs();
             const log = appendSupportJoinLog(remoteDb, remoteShift, remoteAccount, "Firestore + LocalStorage cache");
+            applyOperationalBounds(remoteDb);
+            const bytes = cloudDocumentSizeBytes(remoteDb);
+            if(bytes > MAX_CLOUD_DOCUMENT_BYTES) throw new Error("Dữ liệu dashboard quá lớn, chưa thể ghi nhận trợ live lên cloud");
             transaction.set(cloudDocRef, {
               data:remoteDb,
+              schemaVersion:STORAGE_SCHEMA_VERSION,
+              documentBytes:bytes,
               updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
               updatedAtText:nowText(),
               updatedBy:remoteAccount.name
@@ -2150,7 +2448,9 @@
           });
           db = result.remoteDb;
           applyDbDefaults();
-          localStorage.setItem(DB_KEY, JSON.stringify(db));
+          lastSyncedDb = cloneData(db);
+          localDirty = false;
+          persistLocalSnapshot();
           pushCloudActivityLog(result.log);
         }else{
           localShift.supportId = currentUser.id;
@@ -2166,7 +2466,7 @@
       }catch(e){
         console.error("Không tham gia được ca live", e);
         toast(e?.message || "Không tham gia được ca live");
-      }
+      }finally{ endAction(actionKey); }
     }
 
     function parseShopeeLiveId(value){
@@ -2306,11 +2606,11 @@
     }
 
     function renderTabs(){
-      const pendingCount = pendingReportEditRequests().length;
+      const pendingCount = pendingReportEditRequests().length + visibleLateReportRequests("pending").length;
       const tabs = isAdmin()
-        ? [["dashboard","Tổng quan"],["register","Đăng ký ca live"],["accounts","Tài khoản"],["kpi","KPI Campaign"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["shopee","Kết nối Shopee"],["approvals",`Duyệt sửa báo cáo${pendingCount ? " ("+pendingCount+")" : ""}`],["history","Lịch sử chỉnh sửa"]]
+        ? [["dashboard","Tổng quan"],["register","Đăng ký ca live"],["accounts","Tài khoản"],["kpi","KPI Campaign"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["shopee","Kết nối Shopee"],["approvals",`Duyệt báo cáo${pendingCount ? " ("+pendingCount+")" : ""}`],["history","Lịch sử chỉnh sửa"]]
         : (isLeadLive()
-          ? [["dashboard","Tổng quan shop"],["register","Lịch live"],["accounts","Tài khoản"],["kpi","KPI Campaign"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["approvals",`Duyệt sửa báo cáo${pendingCount ? " ("+pendingCount+")" : ""}`],["history","Lịch sử chỉnh sửa"]]
+          ? [["dashboard","Tổng quan shop"],["register","Lịch live"],["accounts","Tài khoản"],["kpi","KPI Campaign"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["approvals",`Duyệt báo cáo${pendingCount ? " ("+pendingCount+")" : ""}`],["history","Lịch sử chỉnh sửa"]]
           : [["myshift","Ca live của tôi"],["register","Lịch live theo shop"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["history","Lịch sử chỉnh sửa"]]);
       if(!tabs.some(t=>t[0] === activeView)) activeView = tabs[0][0];
       document.getElementById("tabs").innerHTML = tabs.map(t=>`
@@ -2581,24 +2881,32 @@
     function canReport(shift){
       const st = computeShiftStatus(shift).value;
       const permitted = canManageShift(shift) || isParticipant(shift);
-      if(!permitted || (st !== "ended" && st !== "reported")) return false;
-      // Báo cáo cũ vẫn mở bình thường; ca chưa có báo cáo bắt buộc đủ ảnh checkout của mọi vị trí đã check-in.
-      return !!shift.report || hasRequiredCheckoutPhotos(shift);
+      return !!permitted && (st === "ended" || st === "reported");
     }
-    function checkoutMissingRoles(shift){
-      const missing = [];
-      if(shift?.host?.checkinTs && !shift.host.checkoutPhoto) missing.push("Host");
-      if(shift?.supportId && shift?.support?.checkinTs && !shift.support.checkoutPhoto) missing.push("Trợ live");
-      return missing;
+    const EMPLOYEE_REPORT_DEADLINE_MS = 10 * 60 * 60 * 1000;
+    function shiftFinishedTs(shift){
+      return Math.max(Number(shift?.host?.endTs || 0), Number(shift?.support?.endTs || 0));
     }
-    function hasRequiredCheckoutPhotos(shift){
-      return checkoutMissingRoles(shift).length === 0 && !!(shift?.host?.checkinTs || shift?.support?.checkinTs);
+    function employeeReportDeadline(shift){
+      const finishedTs = shiftFinishedTs(shift);
+      return finishedTs ? finishedTs + EMPLOYEE_REPORT_DEADLINE_MS : 0;
     }
-    function canAddCheckoutPhoto(shift, role){
-      if(!shift || !role || !shift[role]?.checkinTs || !shift[role]?.endTs || shift[role]?.checkoutPhoto) return false;
-      return canManageShift(shift) || userRoleInShift(shift) === role;
+    function employeeReportDeadlineText(shift){
+      const ts = employeeReportDeadline(shift);
+      return ts ? new Date(ts).toLocaleString("vi-VN",{hour:"2-digit",minute:"2-digit",day:"2-digit",month:"2-digit",year:"numeric"}) : "-";
     }
-
+    function isEmployeeReportLate(shift){
+      return isEmployee() && !shift?.report && employeeReportDeadline(shift) > 0 && nowTs() > employeeReportDeadline(shift);
+    }
+    function lateReportRequestForShift(shiftId, requesterId=currentUser?.id || ""){
+      return (db.lateReportRequests || []).find(r=>r.shiftId === shiftId && r.requestedById === requesterId && ["pending","approved"].includes(r.status) && !r.consumed) || null;
+    }
+    function hasLateReportApproval(shift){
+      return !!lateReportRequestForShift(shift?.id, currentUser?.id)?.status?.includes("approved");
+    }
+    function canEmployeeEnterInitialReport(shift){
+      return !isEmployeeReportLate(shift) || hasLateReportApproval(shift);
+    }
     function relativeTimeFromMs(ts){
       ts = Number(ts || 0);
       if(!ts) return "Chưa có";
@@ -2713,12 +3021,12 @@
       const reported = dashboardShifts.filter(s=>s.report).length;
       const totalGMV = dashboardShifts.reduce((sum,s)=>sum+Number(effectiveReport(s).gmv||0),0);
       const totalOrders = dashboardShifts.reduce((sum,s)=>sum+Number(effectiveReport(s).orders||0),0);
-      const pendingApprovals = pendingReportEditRequests().length;
+      const pendingApprovals = pendingReportEditRequests().length + visibleLateReportRequests("pending").length;
       const stats = [
         ["Ca theo kênh", dashboardShifts.length, selectedChannel === "all" ? "Tất cả kênh bán" : selectedChannel],
         ["Ca đang live", active, "Đã check-in, đang tính giờ"],
         ["Ca đã kết thúc", ended, "Chờ nhập báo cáo sau live"],
-        ["Yêu cầu sửa báo cáo", pendingApprovals, pendingApprovals ? "Admin cần duyệt" : "Không có yêu cầu chờ duyệt"],
+        ["Yêu cầu báo cáo", pendingApprovals, pendingApprovals ? "Admin/Lead Live cần duyệt" : "Không có yêu cầu chờ duyệt"],
         ["Tổng GMV", money(totalGMV), "Theo kênh đang lọc"],
         ["Tổng đơn", totalOrders.toLocaleString("vi-VN"), "Theo kênh đang lọc"]
       ];
@@ -2848,15 +3156,13 @@
           <div class="meta">
             Host check-in: ${shift.host.checkinTime || "-"} ${shift.host.photo ? `· <a href="#" onclick="openPhoto('${shift.id}','host');return false;">Xem ảnh</a>` : ""}<br/>
             Trợ live check-in: ${shift.support.checkinTime || "-"} ${shift.support.photo ? `· <a href="#" onclick="openPhoto('${shift.id}','support');return false;">Xem ảnh</a>` : ""}<br/>
-            Checkout: ${checkoutMissingRoles(shift).length ? `<span style="color:#b91c1c">Thiếu ảnh ${checkoutMissingRoles(shift).join(", ")}</span>` : "Đã đủ ảnh"}
-            ${(isAdmin() || isLeadLive()) && shift.host.checkoutPhoto ? ` · <a href="#" onclick="openCheckoutPhoto('${shift.id}','host');return false;">Ảnh Host</a>` : ""}
-            ${(isAdmin() || isLeadLive()) && shift.support.checkoutPhoto ? ` · <a href="#" onclick="openCheckoutPhoto('${shift.id}','support');return false;">Ảnh Trợ</a>` : ""}
+            Checkout báo cáo: ${shift.reportCheckoutPhoto ? `Đã chụp bởi ${escapeHtml(shift.reportCheckoutByName || "Nhân viên")}` : "Chụp khi bấm Nhập báo cáo"}
+            ${(isAdmin() || isLeadLive()) && shift.reportCheckoutPhoto ? ` · <a href="#" onclick="openReportCheckoutPhoto('${shift.id}');return false;">Xem ảnh</a>` : ""}
+            ${shiftFinishedTs(shift) && !shift.report ? `<br/>Hạn nhân viên nhập báo cáo: <b>${employeeReportDeadlineText(shift)}</b>` : ""}
           </div>
 
           <div class="actions">
             ${roleActions.join("")}
-            ${canAddCheckoutPhoto(shift,"host") ? `<button class="small red" onclick="openEndModal('${shift.id}','host',true)">Bổ sung ảnh checkout Host</button>` : ""}
-            ${canAddCheckoutPhoto(shift,"support") ? `<button class="small red" onclick="openEndModal('${shift.id}','support',true)">Bổ sung ảnh checkout Trợ</button>` : ""}
             ${(canManageShift(shift) || isParticipant(shift)) ? `<button class="small purple" onclick="openLiveUrlModal('${shift.id}')">${shift.shopeeLiveId ? "Sửa link live" : "Nhập link live"}</button>` : ""}
             ${(canManageShift(shift) || isParticipant(shift)) ? `<button class="small secondary" onclick="prepareQuickNote('${shift.id}')">Ghi chú phát sinh</button>` : ""}
             ${(canManageShift(shift) || isParticipant(shift)) ? reportActionButton(shift) : ""}
@@ -3236,6 +3542,21 @@
       return text.slice(0, maxLen) + "...";
     }
 
+    function sanitizeLogValue(value, depth=0){
+      if(depth > 4) return "[Dữ liệu rút gọn]";
+      if(Array.isArray(value)) return value.slice(0,50).map(v=>sanitizeLogValue(v,depth+1));
+      if(value && typeof value === "object"){
+        const out = {};
+        Object.entries(value).forEach(([key,item])=>{
+          if(/password|token|photo|image|rawmetric/i.test(key)) out[key] = item ? "[Đã lưu riêng]" : "";
+          else out[key] = sanitizeLogValue(item,depth+1);
+        });
+        return out;
+      }
+      if(typeof value === "string" && value.length > 1000) return value.slice(0,1000)+"...";
+      return value;
+    }
+
     function pushCloudActivityLog(log){
       if(!cloudReady || !cloudDocRef || syncingFromCloud || !log) return;
       try{
@@ -3265,9 +3586,9 @@
         accountId:account?.id || "",
         accountName:account?.name || "",
         participantIds:[...new Set(participantIds)],
-        before:before === undefined ? null : before,
-        after:after === undefined ? null : after,
-        details:details || null,
+        before:before === undefined ? null : sanitizeLogValue(before),
+        after:after === undefined ? null : sanitizeLogValue(after),
+        details:details ? sanitizeLogValue(details) : null,
         actorId:currentUser?.id || "system",
         actorName:currentUser?.name || "system",
         actorRole:currentUser ? roleLabel(currentUser.role) : "system",
@@ -3276,9 +3597,9 @@
         storage:cloudReady ? "Firestore + LocalStorage cache" : "LocalStorage"
       };
       db.dataLogs.push(log);
-      // Giữ 1.500 log gần nhất trong document chính để tránh dữ liệu phình quá lớn.
-      if(db.dataLogs.length > 1500){
-        db.dataLogs = db.dataLogs.sort((a,b)=>Number(a.ts||0)-Number(b.ts||0)).slice(-1500);
+      // Bản đầy đủ vẫn nằm trong activityLogs; document chính chỉ giữ bản gần nhất.
+      if(db.dataLogs.length > MAIN_LOG_RETENTION){
+        db.dataLogs = db.dataLogs.sort((a,b)=>Number(a.ts||0)-Number(b.ts||0)).slice(-MAIN_LOG_RETENTION);
       }
       pushCloudActivityLog(log);
       return log;
@@ -3360,15 +3681,75 @@
       }).sort((a,b)=>Number(b.ts || 0) - Number(a.ts || 0));
     }
 
+    function visibleLateReportRequests(status="all"){
+      if(!db?.lateReportRequests || !Array.isArray(db.lateReportRequests)) return [];
+      return db.lateReportRequests.filter(r=>{
+        if(status !== "all" && r.status !== status) return false;
+        const shift = db.shifts.find(s=>s.id === r.shiftId);
+        if(isAdmin()) return true;
+        if(isLeadLive()) return canViewShift(shift);
+        return r.requestedById === currentUser?.id;
+      }).sort((a,b)=>Number(b.ts || 0) - Number(a.ts || 0));
+    }
+
+    async function requestLateReportAccess(shiftId){
+      if(!isEmployee()) return toast("Chỉ nhân viên cần gửi yêu cầu mở báo cáo trễ");
+      const shift = db.shifts.find(s=>s.id === shiftId);
+      if(!shift || !isParticipant(shift) || shift.report) return toast("Không thể gửi yêu cầu cho ca này");
+      if(!isEmployeeReportLate(shift)) return openReportModal(shiftId);
+      const existing = lateReportRequestForShift(shiftId);
+      if(existing) return toast(existing.status === "approved" ? "Yêu cầu đã được duyệt" : "Yêu cầu đang chờ Lead Live duyệt");
+      const actionKey = `late-report:${shiftId}:${currentUser.id}`;
+      if(!beginAction(actionKey)) return;
+      try{
+      const req = {
+        id:id(),shiftId:shift.id,shiftLabel:shiftLabel(shift),shop:shift.shop,
+        requestedById:currentUser.id,requestedByName:currentUser.name,
+        requestedAt:nowText(),ts:nowTs(),deadlineTs:employeeReportDeadline(shift),
+        status:"pending",consumed:false
+      };
+      db.lateReportRequests.push(req);
+      recordDatabaseEvent({module:"late_report_request",action:"Nhân viên yêu cầu mở báo cáo sau hạn 10 giờ",shift,after:req,details:{deadlineTs:req.deadlineTs},employeeInput:true});
+      await saveDB({immediate:true});
+      renderContent();
+      toast("Đã gửi yêu cầu, chờ Lead Live duyệt");
+      }catch(e){ toast(e?.message || "Không gửi được yêu cầu"); }
+      finally{ endAction(actionKey); }
+    }
+
+    function approveLateReportRequest(requestId){
+      if(!canReviewReportRequests()) return toast("Chỉ Admin hoặc Lead Live được duyệt");
+      const req = (db.lateReportRequests || []).find(r=>r.id === requestId);
+      const shift = db.shifts.find(s=>s.id === req?.shiftId);
+      if(!req || req.status !== "pending" || !shift) return toast("Yêu cầu không còn hợp lệ");
+      if(!canManageShift(shift)) return toast("Bạn không phụ trách shop này");
+      req.status = "approved"; req.reviewedById = currentUser.id; req.reviewedByName = currentUser.name; req.reviewedAt = nowText(); req.reviewedTs = nowTs();
+      recordDatabaseEvent({module:"late_report_approval",action:`${roleLabel(currentUser.role)} mở khóa báo cáo trễ`,shift,after:req,details:{requestId:req.id,requester:req.requestedByName}});
+      saveDB({immediate:true}); renderContent(); toast("Đã mở khóa báo cáo cho nhân viên");
+    }
+
+    function rejectLateReportRequest(requestId){
+      if(!canReviewReportRequests()) return toast("Chỉ Admin hoặc Lead Live được từ chối");
+      const req = (db.lateReportRequests || []).find(r=>r.id === requestId);
+      const shift = db.shifts.find(s=>s.id === req?.shiftId);
+      if(!req || req.status !== "pending" || !shift) return toast("Yêu cầu không còn hợp lệ");
+      if(!canManageShift(shift)) return toast("Bạn không phụ trách shop này");
+      const reason = prompt("Lý do từ chối mở báo cáo:", "");
+      if(reason === null) return;
+      req.status = "rejected"; req.rejectReason = String(reason || "").trim(); req.reviewedById = currentUser.id; req.reviewedByName = currentUser.name; req.reviewedAt = nowText(); req.reviewedTs = nowTs();
+      recordDatabaseEvent({module:"late_report_approval",action:`${roleLabel(currentUser.role)} từ chối mở báo cáo trễ`,shift,after:req,details:{requestId:req.id,reason:req.rejectReason}});
+      saveDB({immediate:true}); renderContent(); toast("Đã từ chối yêu cầu mở báo cáo");
+    }
+
     function reportActionButton(shift){
-      if(!canReport(shift)){
-        const st = computeShiftStatus(shift).value;
-        if((canManageShift(shift) || isParticipant(shift)) && (st === "ended" || st === "reported") && checkoutMissingRoles(shift).length){
-          return `<button class="small secondary" disabled title="Cần ảnh checkout">Thiếu ảnh checkout ${checkoutMissingRoles(shift).join(", ")}</button>`;
-        }
-        return "";
-      }
+      if(!canReport(shift)) return "";
       const manager = canManageShift(shift);
+      if(!manager && !shift.report && isEmployeeReportLate(shift)){
+        const lateReq = lateReportRequestForShift(shift.id);
+        if(lateReq?.status === "approved") return `<button class="small green" onclick="openReportModal('${shift.id}')">Đã mở khóa · Nhập báo cáo</button>`;
+        if(lateReq?.status === "pending") return `<button class="small yellow" disabled>Đang chờ Lead duyệt mở báo cáo</button>`;
+        return `<button class="small red" onclick="requestLateReportAccess('${shift.id}')">Gửi yêu cầu mở báo cáo</button>`;
+      }
       const pendingReq = currentUser ? getPendingReportEditRequest(shift.id, manager ? "" : currentUser.id) : null;
       if(!manager && shift.report && pendingReq){
         return `<button class="small yellow" onclick="openReportModal('${shift.id}')">Sửa yêu cầu chờ duyệt</button>`;
@@ -3441,7 +3822,21 @@
       }
       const pending = visibleReportEditRequests("pending");
       const reviewed = visibleReportEditRequests("all").filter(r=>r.status !== "pending").slice(0,50);
+      const latePending = visibleLateReportRequests("pending");
+      const lateReviewed = visibleLateReportRequests("all").filter(r=>r.status !== "pending").slice(0,50);
       wrap.innerHTML = `
+        <div class="section-head" style="margin-top:0"><div><h2>Yêu cầu mở báo cáo quá hạn 10 giờ</h2><p>Lead Live chỉ duyệt các ca thuộc shop mình phụ trách. Sau khi duyệt, nhân viên sẽ chụp checkout rồi nhập báo cáo.</p></div></div>
+        ${latePending.length ? latePending.map(req=>`
+          <div class="card" style="margin-bottom:14px">
+            <div class="section-head" style="margin:0 0 12px">
+              <div><h2 style="font-size:18px">${escapeHtml(req.shiftLabel || "Ca live")}</h2><p>Nhân viên: <b>${escapeHtml(req.requestedByName || "-")}</b> · Gửi lúc ${escapeHtml(req.requestedAt || "-")}</p></div>
+              ${approvalRequestBadge(req.status)}
+            </div>
+            <div class="actions"><button class="green" onclick="approveLateReportRequest('${req.id}')">Duyệt mở báo cáo</button><button class="red" onclick="rejectLateReportRequest('${req.id}')">Từ chối</button></div>
+          </div>
+        `).join("") : `<div class="empty">Không có yêu cầu mở báo cáo trễ đang chờ duyệt.</div>`}
+        ${lateReviewed.length ? `<div class="section-head"><div><h2>Yêu cầu mở báo cáo đã xử lý</h2><p>Hiển thị các yêu cầu gần nhất.</p></div></div>${lateReviewed.map(req=>`<div class="card" style="margin-bottom:10px"><b>${escapeHtml(req.shiftLabel || "Ca live")}</b><div class="meta">${escapeHtml(req.requestedByName || "-")} · ${approvalRequestBadge(req.status)} · Xử lý bởi ${escapeHtml(req.reviewedByName || "-")} ${escapeHtml(req.reviewedAt || "")}${req.rejectReason ? ` · Lý do: ${escapeHtml(req.rejectReason)}` : ""}</div></div>`).join("")}` : ""}
+        <div class="section-head"><div><h2>Duyệt sửa báo cáo đã gửi</h2><p>Áp dụng khi nhân viên muốn thay đổi báo cáo đã lưu.</p></div></div>
         <div class="grid stats-grid" style="margin-bottom:16px">
           <div class="card"><div class="stat-title">Yêu cầu chờ duyệt</div><div class="stat-value">${pending.length}</div><div class="stat-note">Nhân viên sửa báo cáo đã gửi</div></div>
           <div class="card"><div class="stat-title">Đã duyệt</div><div class="stat-value">${visibleReportEditRequests("all").filter(r=>r.status === "approved").length}</div><div class="stat-note">Báo cáo đã cập nhật</div></div>
@@ -3749,7 +4144,7 @@
               <th>Ngày / Campaign</th><th>Kênh bán</th><th>Host live</th><th>Trợ live</th>
               <th>Thời gian thực tế host live</th><th>Thời gian thực tế trợ live</th>
               <th>GMV</th><th>Đơn hàng</th><th>Xu đã tung</th><th>CTR</th><th>CO</th><th>View</th>
-              <th>AOV</th><th>GMV / giờ</th><th>Chi phí Minigame</th><th>GMV khăn ướt</th><th>GMV Box Newborn</th><th>KPI campaign</th><th>Lượt add to cart</th><th>Lượt bình luận</th><th>Thời gian xem TB</th><th>Checkout</th><th>Trạng thái</th><th>Thao tác</th>
+              <th>AOV</th><th>GMV / giờ</th><th>Chi phí Minigame</th><th>GMV khăn ướt</th><th>GMV Box Newborn</th><th>KPI campaign</th><th>Lượt add to cart</th><th>Lượt bình luận</th><th>Thời gian xem TB</th><th>Checkout báo cáo</th><th>Trạng thái</th><th>Thao tác</th>
             </tr>
           </thead>
           <tbody>
@@ -3783,7 +4178,7 @@
                   <td>${Number(r.atc || 0).toLocaleString("vi-VN")}</td>
                   <td>${Number(r.comments || 0).toLocaleString("vi-VN")}</td>
                   <td>${r.avgWatch || "-"}</td>
-                  <td>${checkoutMissingRoles(s).length ? `<span class="badge red">Thiếu ${checkoutMissingRoles(s).join(", ")}</span>` : `<span class="badge green">Đủ ảnh</span>`}${(isAdmin() || isLeadLive()) && s.host.checkoutPhoto ? `<br/><button class="small secondary" onclick="openCheckoutPhoto('${s.id}','host')">Ảnh Host</button>` : ""}${(isAdmin() || isLeadLive()) && s.support.checkoutPhoto ? `<br/><button class="small secondary" onclick="openCheckoutPhoto('${s.id}','support')">Ảnh Trợ</button>` : ""}</td>
+                  <td>${s.reportCheckoutPhoto ? `<span class="badge green">Đã chụp</span><br/><span class="meta">${escapeHtml(s.reportCheckoutByName || "-")} · ${escapeHtml(s.reportCheckoutTime || "-")}</span>${(isAdmin() || isLeadLive()) ? `<br/><button class="small secondary" onclick="openReportCheckoutPhoto('${s.id}')">Xem ảnh</button>` : ""}` : `<span class="badge gray">Chụp khi nhập báo cáo</span>`}</td>
                   <td><span class="badge ${st.color}">${st.label}</span>${pendingReq ? `<br/><span class="badge yellow" style="margin-top:6px">Chờ duyệt sửa báo cáo</span>` : ""}</td>
                   <td>
                     ${reportActionButton(s)}
@@ -4157,6 +4552,7 @@
       db.shifts = db.shifts.filter(s=>s.id!==shiftId);
       db.notes = db.notes.filter(n=>n.shiftId!==shiftId);
       db.reportEditRequests = (db.reportEditRequests || []).filter(r=>r.shiftId!==shiftId);
+      db.lateReportRequests = (db.lateReportRequests || []).filter(r=>r.shiftId!==shiftId);
       saveDB({immediate:true});
       renderContent();
       toast("Đã xóa ca live");
@@ -4206,82 +4602,75 @@
     function capturePhoto(){
       const video = document.getElementById("cameraVideo");
       const canvas = document.getElementById("cameraCanvas");
-      const w = video.videoWidth || 640;
-      const h = video.videoHeight || 480;
-      canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(video,0,0,w,h);
-      ctx.fillStyle = "rgba(0,0,0,.58)";
-      ctx.fillRect(0,h-48,w,48);
-      ctx.fillStyle = "#fff";
-      ctx.font = Math.max(16,Math.round(w/34)) + "px Arial";
-      ctx.fillText("Bắt đầu live: " + nowText(), 16, h-18);
-      capturedPhoto = canvas.toDataURL("image/jpeg",.82);
-      toast("Đã chụp ảnh check-in");
+      try{
+        capturedPhoto = scaledCanvasSnapshot(video,canvas,"Bắt đầu live: ");
+        toast("Đã chụp ảnh check-in");
+      }catch(e){ toast(e?.message || "Camera chưa sẵn sàng"); }
     }
     async function confirmCheckin(){
       const shiftId = document.getElementById("checkinShiftId").value;
       const role = document.getElementById("checkinRole").value;
       const s = db.shifts.find(x=>x.id===shiftId);
-      if(!s) return;
+      if(!s) return toast("Không tìm thấy ca live");
+      if(!canManageShift(s) && userRoleInShift(s)!==role) return toast("Bạn không có quyền check-in vị trí này");
+      if(!canCheckin(s,role)) return toast("Vị trí này đã check-in hoặc không còn hợp lệ");
       if(!capturedPhoto) return toast("Bạn cần chụp ảnh trước");
-      const item = s[role];
-      toast(cloudReady ? "Đang tải ảnh check-in lên cloud..." : "Đang lưu check-in...");
-      item.checkinTs = nowTs();
-      item.checkinTime = nowText();
-      item.photo = await uploadCheckinPhotoToCloud(shiftId, role, capturedPhoto);
       const liveInput = cleanShopeeLiveUrl(document.getElementById("checkinShopeeLiveUrl").value);
       const liveId = parseShopeeLiveId(liveInput);
       if(liveInput && !liveId) return toast("Link live Shopee chưa hợp lệ, chưa tách được Live ID");
-      if(liveInput){
-        s.shopeeLiveUrl = liveInput;
-        s.shopeeLiveId = liveId;
-        if(!s.shopeeLiveMetrics || typeof s.shopeeLiveMetrics !== "object") s.shopeeLiveMetrics = {};
-      }
-      item.checkinNote = document.getElementById("checkinNote").value.trim();
-
-      if(item.checkinNote){
-        db.notes.push({
-          id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${shiftPeopleLabel(s)}`,
-          type:`Check-in ${roleNameInShift(role)}`,content:item.checkinNote,createdBy:currentUser.name,time:nowText()
+      const actionKey = `checkin:${shiftId}:${role}`;
+      if(!beginAction(actionKey)) return;
+      try{
+        toast(cloudReady ? "Đang tải ảnh check-in lên cloud..." : "Đang lưu check-in...");
+        const photoUrl = await uploadCheckinPhotoToCloud(shiftId, role, capturedPhoto);
+        if(!canCheckin(s,role)) throw new Error("Vị trí này vừa được check-in trên thiết bị khác");
+        const item = s[role];
+        item.checkinTs = nowTs();
+        item.checkinTime = nowText();
+        item.photo = photoUrl;
+        if(liveInput){
+          s.shopeeLiveUrl = liveInput;
+          s.shopeeLiveId = liveId;
+          if(!s.shopeeLiveMetrics || typeof s.shopeeLiveMetrics !== "object") s.shopeeLiveMetrics = {};
+        }
+        item.checkinNote = document.getElementById("checkinNote").value.trim();
+        if(item.checkinNote){
+          db.notes.push({
+            id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${shiftPeopleLabel(s)}`,
+            type:`Check-in ${roleNameInShift(role)}`,content:item.checkinNote,createdBy:currentUser.name,time:nowText()
+          });
+        }
+        recordDatabaseEvent({
+          module:"employee_input",
+          action:`Nhân viên check-in ${roleNameInShift(role)}`,
+          shift:s,
+          after:{role, checkinTime:item.checkinTime, checkinNote:item.checkinNote, photoSaved:item.photo ? "Có" : "Không", shopeeLiveId:s.shopeeLiveId || ""},
+          details:{role, checkinTime:item.checkinTime, hasNote:!!item.checkinNote, hasPhoto:!!item.photo, shopeeLiveId:s.shopeeLiveId || ""},
+          employeeInput:true
         });
+        const result = await saveDB({immediate:true});
+        closeCheckinModal();
+        renderContent();
+        toast(result.ok || result.localOnly ? "Đã bắt đầu live và tính giờ theo thời gian thực" : "Đã lưu trên máy; cloud đang tự đồng bộ lại");
+      }catch(e){
+        console.error("Không check-in được",e);
+        toast(e?.message || "Không check-in được");
+      }finally{
+        endAction(actionKey);
       }
-      recordDatabaseEvent({
-        module:"employee_input",
-        action:`Nhân viên check-in ${roleNameInShift(role)}`,
-        shift:s,
-        after:{role, checkinTime:item.checkinTime, checkinNote:item.checkinNote, photoSaved:item.photo ? "Có" : "Không", shopeeLiveId:s.shopeeLiveId || ""},
-        details:{role, checkinTime:item.checkinTime, hasNote:!!item.checkinNote, hasPhoto:!!item.photo, shopeeLiveId:s.shopeeLiveId || ""},
-        employeeInput:true
-      });
-      saveDB({immediate:true});
-      closeCheckinModal();
-      renderContent();
-        toast("Đã bắt đầu live và tính giờ theo thời gian thực");
     }
 
-    async function openEndModal(shiftId, role, photoOnly=false){
+    function openEndModal(shiftId, role){
       const s = db.shifts.find(x=>x.id===shiftId);
       if(!s) return;
-      if(!canManageShift(s) && userRoleInShift(s)!==role) return toast("Bạn không có quyền checkout vị trí này");
-      if(photoOnly){
-        if(!canAddCheckoutPhoto(s,role) && !canManageShift(s)) return toast("Không thể bổ sung ảnh checkout cho vị trí này");
-      }else if(!canEndLive(s,role)) return toast("Vị trí này chưa live hoặc đã kết thúc");
+      if(!canManageShift(s) && userRoleInShift(s)!==role) return toast("Bạn không có quyền kết thúc vị trí này");
+      if(!canEndLive(s,role)) return toast("Vị trí này chưa live hoặc đã kết thúc");
       document.getElementById("endShiftId").value = shiftId;
       document.getElementById("endRole").value = role;
-      document.getElementById("endPhotoOnly").value = photoOnly ? "1" : "0";
       document.getElementById("endMeta").textContent = `${roleNameInShift(role)} · ${role==="host"?s.hostName:supportNameLabel(s)}`;
-      document.getElementById("endDurationText").innerHTML = photoOnly ? `Thời gian đã chốt: <b>${formatDuration(actualMs(s[role]))}</b>. Ảnh checkout bổ sung không đổi giờ kết thúc.` : `Thời gian đang tính: <b>${formatDuration(actualMs(s[role]))}</b>. Sau khi xác nhận sẽ chốt vào báo cáo.`;
-      document.getElementById("confirmEndBtn").textContent = photoOnly ? "Lưu ảnh checkout" : "Xác nhận kết thúc ca live";
+      document.getElementById("endDurationText").innerHTML = `Thời gian đang tính: <b>${formatDuration(actualMs(s[role]))}</b>. Sau khi xác nhận sẽ chốt thời gian; ảnh checkout sẽ chụp khi bấm Nhập báo cáo.`;
       document.getElementById("endNote").value = "";
-      capturedCheckoutPhoto = "";
-      const canvas = document.getElementById("checkoutCameraCanvas");
-      canvas.width = 640; canvas.height = 480;
-      const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "#f3f4f6"; ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.fillStyle = "#667085"; ctx.font = "20px Arial"; ctx.fillText("Chưa chụp ảnh checkout", 210, 240);
       openModal("endModal");
-      await startCheckoutCamera();
     }
     async function startCheckoutCamera(){
       stopCamera();
@@ -4295,57 +4684,52 @@
     function captureCheckoutPhoto(){
       const video = document.getElementById("checkoutCameraVideo");
       const canvas = document.getElementById("checkoutCameraCanvas");
-      const w = video.videoWidth || 640;
-      const h = video.videoHeight || 480;
-      canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(video,0,0,w,h);
-      ctx.fillStyle = "rgba(0,0,0,.58)"; ctx.fillRect(0,h-48,w,48);
-      ctx.fillStyle = "#fff"; ctx.font = Math.max(16,Math.round(w/34)) + "px Arial";
-      ctx.fillText("Checkout: " + nowText(), 16, h-18);
-      capturedCheckoutPhoto = canvas.toDataURL("image/jpeg",.82);
-      toast("Đã chụp ảnh checkout");
+      try{
+        capturedCheckoutPhoto = scaledCanvasSnapshot(video,canvas,"Checkout: ");
+        toast("Đã chụp ảnh checkout");
+      }catch(e){ toast(e?.message || "Camera chưa sẵn sàng"); }
     }
-    function closeEndModal(){
+    function closeReportCheckoutModal(){
       stopCamera();
       capturedCheckoutPhoto = "";
-      closeModal("endModal");
+      closeModal("reportCheckoutModal");
     }
     async function confirmEndLive(){
       const shiftId = document.getElementById("endShiftId").value;
       const role = document.getElementById("endRole").value;
       const s = db.shifts.find(x=>x.id===shiftId);
-      if(!s) return;
-      if(!capturedCheckoutPhoto) return toast("Bạn cần chụp ảnh checkout trước");
-      const item = s[role];
-      const photoOnly = document.getElementById("endPhotoOnly").value === "1";
-      toast(cloudReady ? "Đang tải ảnh checkout lên cloud..." : "Đang lưu ảnh checkout...");
-      item.checkoutPhoto = await uploadCheckoutPhotoToCloud(shiftId, role, capturedCheckoutPhoto);
-      item.checkoutTime = nowText();
-      item.checkoutTs = nowTs();
-      if(!photoOnly){
+      if(!s) return toast("Không tìm thấy ca live");
+      if(!canManageShift(s) && userRoleInShift(s)!==role) return toast("Bạn không có quyền kết thúc vị trí này");
+      if(!canEndLive(s,role)) return toast("Vị trí này chưa live hoặc đã kết thúc");
+      const actionKey = `end:${shiftId}:${role}`;
+      if(!beginAction(actionKey)) return;
+      try{
+        const item = s[role];
         item.endTs = nowTs();
         item.endTime = nowText();
-      }
-      item.endNote = document.getElementById("endNote").value.trim();
-      if(item.endNote){
-        db.notes.push({
-          id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${shiftPeopleLabel(s)}`,
-          type:`Kết thúc ${roleNameInShift(role)}`,content:item.endNote,createdBy:currentUser.name,time:nowText()
+        item.endNote = document.getElementById("endNote").value.trim();
+        if(item.endNote){
+          db.notes.push({
+            id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${shiftPeopleLabel(s)}`,
+            type:`Kết thúc ${roleNameInShift(role)}`,content:item.endNote,createdBy:currentUser.name,time:nowText()
+          });
+        }
+        recordDatabaseEvent({
+          module:"employee_input",
+          action:`Nhân viên kết thúc ${roleNameInShift(role)}`,
+          shift:s,
+          after:{role, endTime:item.endTime, duration:formatDuration(actualMs(item)), endNote:item.endNote},
+          details:{role, endTime:item.endTime, duration:formatDuration(actualMs(item)), hasNote:!!item.endNote},
+          employeeInput:true
         });
-      }
-      recordDatabaseEvent({
-        module:"employee_input",
-        action:`Nhân viên kết thúc ${roleNameInShift(role)}`,
-        shift:s,
-        after:{role, endTime:item.endTime, duration:formatDuration(actualMs(item)), endNote:item.endNote, checkoutTime:item.checkoutTime, checkoutPhotoSaved:!!item.checkoutPhoto},
-        details:{role, endTime:item.endTime, duration:formatDuration(actualMs(item)), hasNote:!!item.endNote, hasCheckoutPhoto:!!item.checkoutPhoto, photoOnly},
-        employeeInput:true
-      });
-      saveDB({immediate:true});
-      closeEndModal();
-      renderContent();
-      toast(photoOnly ? "Đã lưu ảnh checkout bổ sung" : "Đã checkout, kết thúc live và chốt thời gian thực tế");
+        const result = await saveDB({immediate:true});
+        closeModal("endModal");
+        renderContent();
+        toast(result.ok || result.localOnly ? "Đã kết thúc live và chốt thời gian thực tế" : "Đã lưu trên máy; cloud đang tự đồng bộ lại");
+      }catch(e){
+        console.error("Không kết thúc được ca",e);
+        toast(e?.message || "Không kết thúc được ca");
+      }finally{ endAction(actionKey); }
     }
 
     function prepareQuickNote(shiftId){
@@ -4384,13 +4768,56 @@
       toast("Đã lưu ghi chú phát sinh");
     }
 
-    function openReportModal(shiftId){
+    async function openReportCheckoutModal(shiftId){
+      const s = db.shifts.find(x=>x.id===shiftId);
+      if(!s || !canReport(s)) return toast("Ca live chưa đủ điều kiện nhập báo cáo");
+      if(!canEmployeeEnterInitialReport(s)) return toast("Báo cáo đã quá hạn 10 giờ. Hãy gửi yêu cầu và chờ Lead Live duyệt.");
+      document.getElementById("reportCheckoutShiftId").value = shiftId;
+      document.getElementById("reportCheckoutMeta").textContent = `${s.date} · ${s.start}-${s.end} · ${s.shop} · ${shiftPeopleLabel(s)}`;
+      capturedCheckoutPhoto = "";
+      const canvas = document.getElementById("checkoutCameraCanvas");
+      canvas.width = 640; canvas.height = 480;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#f3f4f6"; ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle = "#667085"; ctx.font = "20px Arial"; ctx.fillText("Chưa chụp ảnh checkout", 210, 240);
+      openModal("reportCheckoutModal");
+      await startCheckoutCamera();
+    }
+
+    async function confirmReportCheckout(){
+      const shiftId = document.getElementById("reportCheckoutShiftId").value;
+      const s = db.shifts.find(x=>x.id===shiftId);
+      if(!s || !canReport(s)) return toast("Ca live không còn hợp lệ");
+      if(!canEmployeeEnterInitialReport(s)) return toast("Quyền mở báo cáo chưa được Lead Live duyệt");
+      if(!capturedCheckoutPhoto) return toast("Bạn cần chụp ảnh checkout trước");
+      const actionKey = `checkout:${shiftId}`;
+      if(!beginAction(actionKey)) return;
+      try{
+        toast(cloudReady ? "Đang tải ảnh checkout lên cloud..." : "Đang lưu ảnh checkout...");
+        const photoUrl = await uploadCheckoutPhotoToCloud(shiftId, "report", capturedCheckoutPhoto);
+        if(s.reportCheckoutPhoto) throw new Error("Ảnh checkout đã được ghi nhận trước đó");
+        s.reportCheckoutPhoto = photoUrl;
+        s.reportCheckoutTime = nowText();
+        s.reportCheckoutTs = nowTs();
+        s.reportCheckoutById = currentUser.id;
+        s.reportCheckoutByName = currentUser.name;
+        recordDatabaseEvent({module:"report_checkout",action:"Chụp checkout trước khi nhập báo cáo",shift:s,after:{reportCheckoutTime:s.reportCheckoutTime,reportCheckoutByName:s.reportCheckoutByName,photoSaved:!!s.reportCheckoutPhoto},details:{hasPhoto:!!s.reportCheckoutPhoto},employeeInput:isEmployee()});
+        await saveDB({immediate:true});
+        closeReportCheckoutModal();
+        renderContent();
+        openReportModal(shiftId, true);
+      }catch(e){
+        console.error("Không lưu được ảnh checkout",e);
+        toast(e?.message || "Không lưu được ảnh checkout");
+      }finally{ endAction(actionKey); }
+    }
+
+    function openReportModal(shiftId, checkoutConfirmed=false){
       const s = db.shifts.find(x=>x.id===shiftId);
       if(!s) return;
-      if(!canReport(s)){
-        const missing = checkoutMissingRoles(s);
-        return toast(missing.length ? `Cần bổ sung ảnh checkout: ${missing.join(", ")}` : "Chỉ nhập báo cáo sau khi ca đã kết thúc live");
-      }
+      if(!canReport(s)) return toast("Chỉ nhập báo cáo sau khi ca đã kết thúc live");
+      if(!canEmployeeEnterInitialReport(s)) return toast("Báo cáo đã quá hạn 10 giờ. Hãy gửi yêu cầu và chờ Lead Live duyệt.");
+      if(!s.report && !s.reportCheckoutPhoto && !checkoutConfirmed){ openReportCheckoutModal(shiftId); return; }
       document.getElementById("reportShiftId").value = shiftId;
       document.getElementById("reportMeta").textContent = `${s.date} · ${s.start}-${s.end} · Host ${s.hostName} · Trợ ${supportNameLabel(s)}`;
       const canManageReport = canManageShift(s);
@@ -4461,14 +4888,15 @@
 
     function shiftTimestampSeconds(date, time){
       if(!date || !time) return 0;
-      const d = new Date(`${date}T${time}:00`);
+      const d = new Date(`${date}T${time}:00+07:00`);
       const ts = Math.floor(d.getTime()/1000);
       return Number.isFinite(ts) ? ts : 0;
     }
 
     function shiftShopeeWindowSeconds(s){
       const scheduledFrom = shiftTimestampSeconds(s.date, s.start);
-      const scheduledTo = shiftTimestampSeconds(s.date, s.end);
+      let scheduledTo = shiftTimestampSeconds(s.date, s.end);
+      if(scheduledTo && scheduledFrom && scheduledTo <= scheduledFrom) scheduledTo += 24*60*60;
       const starts = [s.host?.checkinTs, s.support?.checkinTs].filter(Boolean).map(x=>Math.floor(Number(x)/1000));
       const ends = [s.host?.endTs, s.support?.endTs].filter(Boolean).map(x=>Math.floor(Number(x)/1000));
       const now = Math.floor(Date.now()/1000);
@@ -5003,11 +5431,16 @@
       if(compare && s) compare.innerHTML = `<b>So sánh KPI campaign:</b><br/>${campaignComparisonHtml(s, gmv)}`;
     }
     function autoAOV(){ autoReportDerived(); }
-    function submitReport(){
+    async function submitReport(){
       const shiftId = document.getElementById("reportShiftId").value;
       const s = db.shifts.find(x=>x.id===shiftId);
-      if(!s || !canReport(s)) return;
+      if(!s || !canReport(s)) return toast("Ca live không còn đủ điều kiện báo cáo");
+      const actionKey = `report:${shiftId}:${currentUser?.id || ""}`;
+      if(!beginAction(actionKey)) return;
+      try{
       const oldReport = cloneData(s.report);
+      if(!oldReport && !s.reportCheckoutPhoto) return toast("Bạn cần chụp ảnh checkout trước khi lưu báo cáo");
+      if(!oldReport && !canEmployeeEnterInitialReport(s)) return toast("Báo cáo đã quá hạn 10 giờ và chưa được Lead Live mở khóa");
       const newReport = {
         hostActualMs:roleEffectiveMs(s,"host"),
         supportActualMs:roleEffectiveMs(s,"support"),
@@ -5033,6 +5466,16 @@
         lastEditedRequestAt: oldReport ? nowText() : ""
       };
 
+      const numericFields = ["gmv","orders","coins","view","aov","atc","comments","minigameCost","gmvWetWipes","gmvNewbornBox"];
+      const invalidField = numericFields.find(key=>!Number.isFinite(newReport[key]) || newReport[key] < 0);
+      if(invalidField) return toast("Các chỉ số báo cáo phải là số hợp lệ và không được âm");
+      if(!Number.isInteger(newReport.orders) || !Number.isInteger(newReport.view) || !Number.isInteger(newReport.atc) || !Number.isInteger(newReport.comments)){
+        return toast("Đơn hàng, view, add to cart và bình luận phải là số nguyên");
+      }
+      if(newReport.note.length > 2000 || newReport.ctr.length > 50 || newReport.co.length > 50 || newReport.avgWatch.length > 100){
+        return toast("Nội dung báo cáo quá dài, vui lòng rút gọn");
+      }
+
       // Nhân viên sửa báo cáo đã gửi: không cập nhật trực tiếp, chỉ tạo yêu cầu chờ admin duyệt.
       if(oldReport && !canManageShift(s)){
         const changes = buildHistoryChanges(oldReport, newReport, REPORT_HISTORY_FIELDS);
@@ -5047,14 +5490,17 @@
           details:{requestId:req.id, requester:req.requestedByName, gmv:newReport.gmv, orders:newReport.orders, changes:changes.length},
           employeeInput:true
         });
-        saveDB({immediate:true});
+        await saveDB({immediate:true});
         closeModal("reportModal");
         renderContent();
         toast("Đã gửi yêu cầu sửa báo cáo, chờ Admin/Lead Live duyệt");
         return;
       }
 
+      newReport.reportNoteId = oldReport?.reportNoteId || "";
       s.report = newReport;
+      const lateAccess = (db.lateReportRequests || []).find(r=>r.shiftId === s.id && r.requestedById === currentUser.id && r.status === "approved" && !r.consumed);
+      if(lateAccess){ lateAccess.consumed = true; lateAccess.consumedAt = nowText(); lateAccess.consumedTs = nowTs(); }
       recordDatabaseEvent({
         module:canManageShift(s) && oldReport ? "approval_admin" : "employee_input",
         action:oldReport ? (canManageShift(s) ? `${roleLabel(currentUser.role)} sửa trực tiếp báo cáo sau live` : "Nhân viên sửa báo cáo sau live") : `${roleLabel(currentUser.role)} tạo báo cáo sau live`,
@@ -5072,16 +5518,30 @@
         after:newReport,
         fields:REPORT_HISTORY_FIELDS
       });
-      if(s.report.note){
-        db.notes.push({
+      const existingReportNote = s.report.reportNoteId ? db.notes.find(n=>n.id === s.report.reportNoteId) : null;
+      if(s.report.note && existingReportNote){
+        existingReportNote.content = s.report.note;
+        existingReportNote.updatedBy = currentUser.name;
+        existingReportNote.updatedAt = nowText();
+      }else if(s.report.note){
+        const reportNote = {
           id:id(),shiftId:s.id,shiftLabel:`${s.date} · ${s.start}-${s.end} · ${shiftPeopleLabel(s)}`,
           type:"Báo cáo sau live",content:s.report.note,createdBy:currentUser.name,time:nowText()
-        });
+        };
+        db.notes.push(reportNote);
+        s.report.reportNoteId = reportNote.id;
+      }else if(existingReportNote){
+        db.notes = db.notes.filter(n=>n.id !== existingReportNote.id);
+        s.report.reportNoteId = "";
       }
-      saveDB({immediate:true});
+      const result = await saveDB({immediate:true});
       closeModal("reportModal");
       renderContent();
-      toast("Đã lưu báo cáo sau live");
+      toast(result.ok || result.localOnly ? "Đã lưu báo cáo sau live" : "Đã lưu trên máy; cloud đang tự đồng bộ lại");
+      }catch(e){
+        console.error("Không lưu được báo cáo",e);
+        toast(e?.message || "Không lưu được báo cáo");
+      }finally{ endAction(actionKey); }
     }
 
     function openPhoto(shiftId, role){
@@ -5093,14 +5553,14 @@
       openModal("photoModal");
     }
 
-    function openCheckoutPhoto(shiftId, role){
+    function openReportCheckoutPhoto(shiftId){
       const s = db.shifts.find(x=>x.id===shiftId);
-      if(!s || !s[role]?.checkoutPhoto) return;
+      if(!s || !s.reportCheckoutPhoto) return;
       if(!isAdmin() && !isLeadLive()) return toast("Chỉ Admin hoặc Lead Live được xem ảnh checkout");
       if(isLeadLive() && !canViewShift(s)) return toast("Bạn không phụ trách shop này");
-      document.getElementById("photoPreview").src = s[role].checkoutPhoto;
-      document.getElementById("photoTitle").textContent = "Ảnh checkout";
-      document.getElementById("photoMeta").textContent = `${roleNameInShift(role)} · ${role==="host"?s.hostName:supportNameLabel(s)} · ${s[role].checkoutTime || s[role].endTime || "-"}`;
+      document.getElementById("photoPreview").src = s.reportCheckoutPhoto;
+      document.getElementById("photoTitle").textContent = "Ảnh checkout báo cáo";
+      document.getElementById("photoMeta").textContent = `${s.reportCheckoutByName || "-"} · ${s.reportCheckoutTime || "-"} · ${shiftLabel(s)}`;
       openModal("photoModal");
     }
 
@@ -5146,8 +5606,7 @@
         "Lượt add to cart",
         "Lượt bình luận",
         "Thời gian xem trung bình",
-        "Ảnh checkout Host",
-        "Ảnh checkout Trợ live",
+        "Ảnh checkout báo cáo",
         "Trạng thái"
       ];
 
@@ -5182,8 +5641,7 @@
           r.atc || 0,
           r.comments || 0,
           r.avgWatch || "",
-          (isAdmin() || isLeadLive()) ? (s.host.checkoutPhoto || "") : "",
-          (isAdmin() || isLeadLive()) ? (s.support.checkoutPhoto || "") : "",
+          (isAdmin() || isLeadLive()) ? (s.reportCheckoutPhoto || "") : "",
           st.label
         ];
       });
