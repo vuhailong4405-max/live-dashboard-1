@@ -1424,7 +1424,7 @@
       <div class="modal-head">
         <div>
           <h3 id="shiftModalTitle">Đăng ký ca live</h3>
-          <div class="meta">Nhân viên đăng ký ca sẽ là Host; nhân viên khác cùng shop có thể tham gia vị trí Trợ live</div>
+          <div class="meta">Nhân viên hoặc Lead Live có thể làm Host; tài khoản khác cùng shop có thể tham gia vị trí Trợ live</div>
         </div>
         <button class="close" onclick="closeModal('shiftModal')">×</button>
       </div>
@@ -2310,6 +2310,11 @@
     function isAdmin(){ return currentUser && currentUser.role === "admin"; }
     function isLeadLive(){ return currentUser && currentUser.role === "lead"; }
     function isEmployee(){ return currentUser && normalizedAccountRole(currentUser.role) === "employee"; }
+    function isLiveParticipantAccount(account=currentUser){
+      const role = normalizedAccountRole(account?.role);
+      return !!account && account.status !== "locked" && (role === "employee" || role === "lead");
+    }
+    function canParticipateInLive(){ return isLiveParticipantAccount(currentUser); }
     function canManageAccounts(){ return isAdmin() || isLeadLive(); }
     function canManageKpi(){ return isAdmin() || isLeadLive(); }
     function canReviewReportRequests(){ return isAdmin() || isLeadLive(); }
@@ -2354,11 +2359,11 @@
       return {start,end};
     }
 
-    function supportScheduleConflict(targetShift, accountId, shifts=db?.shifts || []){
+    function participantScheduleConflict(targetShift, accountId, shifts=db?.shifts || []){
       const targetRange = shiftScheduledRangeMs(targetShift);
       if(!targetRange || !accountId) return null;
       return shifts.find(other=>{
-        if(!other || other.id === targetShift.id || other.supportId !== accountId) return false;
+        if(!other || other.id === targetShift.id || (other.hostId !== accountId && other.supportId !== accountId)) return false;
         const otherRange = shiftScheduledRangeMs(other);
         if(!otherRange) return false;
         return targetRange.start < otherRange.end && otherRange.start < targetRange.end;
@@ -2366,20 +2371,20 @@
     }
 
     function supportOpenShiftReason(shift, account=currentUser, shifts=db?.shifts || []){
-      if(!account || normalizedAccountRole(account.role) !== "employee") return "Chỉ tài khoản nhân viên được tham gia ca";
+      if(!isLiveParticipantAccount(account)) return "Chỉ Nhân viên hoặc Lead Live được tham gia ca";
       if(!shift) return "Không tìm thấy ca live";
       if(shift.hostId === account.id) return "Bạn đang là Host của ca này";
       if(shift.supportId) return shift.supportId === account.id ? "Bạn đã tham gia ca này" : "Ca đã có trợ live";
       if(!accountCanHandleShop(account, shift.shop)) return "Bạn chưa được phân quyền shop này";
       const status = computeShiftStatus(shift).value;
       if(status === "ended" || status === "reported" || shift.host?.endTs) return "Ca live đã kết thúc";
-      const conflict = supportScheduleConflict(shift, account.id, shifts);
+      const conflict = participantScheduleConflict(shift, account.id, shifts);
       if(conflict) return `Trùng lịch với ca ${conflict.date} · ${conflict.start}-${conflict.end} · ${conflict.shop || "Khác"}`;
       return "";
     }
 
     function isOpenShiftForSupport(shift, account=currentUser){
-      if(!account || normalizedAccountRole(account.role) !== "employee" || !shift || shift.supportId) return false;
+      if(!isLiveParticipantAccount(account) || !shift || shift.supportId) return false;
       if(shift.hostId === account.id || !accountCanHandleShop(account, shift.shop)) return false;
       const status = computeShiftStatus(shift).value;
       if(status === "ended" || status === "reported" || shift.host?.endTs) return false;
@@ -2416,7 +2421,7 @@
     }
 
     async function joinShiftAsSupport(shiftId){
-      if(!isEmployee()) return toast("Chỉ tài khoản nhân viên được tham gia vị trí trợ live");
+      if(!canParticipateInLive()) return toast("Chỉ Nhân viên hoặc Lead Live được tham gia vị trí trợ live");
       const localShift = db.shifts.find(s=>s.id === shiftId);
       const localReason = supportOpenShiftReason(localShift);
       if(localReason) return toast(localReason);
@@ -2430,9 +2435,9 @@
             if(!snap.exists) throw new Error("Không tìm thấy dữ liệu dashboard trên Firestore");
             const payload = snap.data() || {};
             const remoteDb = cloneData(payload.data || {});
-            const remoteAccount = (remoteDb.accounts || []).find(a=>a.id === currentUser.id && normalizedAccountRole(a.role) === "employee" && a.status !== "locked");
+            const remoteAccount = (remoteDb.accounts || []).find(a=>a.id === currentUser.id && isLiveParticipantAccount(a));
             const remoteShift = (remoteDb.shifts || []).find(s=>s.id === shiftId);
-            if(!remoteAccount) throw new Error("Tài khoản nhân viên không còn hoạt động");
+            if(!remoteAccount) throw new Error("Tài khoản không còn quyền tham gia ca live");
             const reason = supportOpenShiftReason(remoteShift, remoteAccount, remoteDb.shifts || []);
             if(reason) throw new Error(reason);
             remoteShift.supportId = remoteAccount.id;
@@ -2618,7 +2623,7 @@
       const tabs = isAdmin()
         ? [["dashboard","Tổng quan"],["register","Đăng ký ca live"],["accounts","Tài khoản"],["kpi","KPI Campaign"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["shopee","Kết nối Shopee"],["approvals",`Duyệt báo cáo${pendingCount ? " ("+pendingCount+")" : ""}`],["history","Lịch sử chỉnh sửa"]]
         : (isLeadLive()
-          ? [["dashboard","Tổng quan shop"],["register","Lịch live"],["accounts","Tài khoản"],["kpi","KPI Campaign"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["approvals",`Duyệt báo cáo${pendingCount ? " ("+pendingCount+")" : ""}`],["history","Lịch sử chỉnh sửa"]]
+          ? [["dashboard","Tổng quan shop"],["register","Lịch live & tham gia"],["accounts","Tài khoản"],["kpi","KPI Campaign"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["approvals",`Duyệt báo cáo${pendingCount ? " ("+pendingCount+")" : ""}`],["history","Lịch sử chỉnh sửa"]]
           : [["myshift","Ca live của tôi"],["register","Lịch live theo shop"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["history","Lịch sử chỉnh sửa"]]);
       if(!tabs.some(t=>t[0] === activeView)) activeView = tabs[0][0];
       document.getElementById("tabs").innerHTML = tabs.map(t=>`
@@ -3078,14 +3083,14 @@
       if(st.value === "active"){ alertColor = "green"; alertText = "Ca live đang hoạt động, thời gian đang được tính theo thời gian thực."; }
       if(st.value === "ended"){ alertColor = "blue"; alertText = "Ca live đã kết thúc, có thể nhập báo cáo sau live."; }
       if(st.value === "reported"){ alertColor = "purple"; alertText = "Ca đã có báo cáo sau live."; }
-      if(isEmployee() && !hasSupport && isOpenShiftForSupport(shift)){
+      if(canParticipateInLive() && !hasSupport && isOpenShiftForSupport(shift)){
         alertColor = "blue";
         alertText = "Ca này đang chưa có trợ live. Bạn có thể đăng ký tham gia.";
       }
       const pendingReq = currentUser ? getPendingReportEditRequest(shift.id, canManageShift(shift) ? "" : currentUser.id) : null;
 
       const roleActions = [];
-      if(isEmployee() && !hasSupport && isOpenShiftForSupport(shift)){
+      if(canParticipateInLive() && !hasSupport && isOpenShiftForSupport(shift)){
         const joinReason = supportOpenShiftReason(shift);
         if(joinReason){
           roleActions.push(`<button class="small secondary" disabled title="${escapeAttr(joinReason)}">Không thể tham gia</button>`);
@@ -3210,7 +3215,7 @@
                 <td><span class="badge ${st.color}">${st.label}</span></td>
                 <td>${s.goal || "-"}</td>
                 <td>
-                  ${isEmployee() && !s.supportId && isOpenShiftForSupport(s) ? (supportOpenShiftReason(s) ? `<button class="small secondary" disabled title="${escapeAttr(supportOpenShiftReason(s))}">Không thể tham gia</button>` : `<button class="small green" onclick="joinShiftAsSupport('${s.id}')">+ Tham gia trợ live</button>`) : ""}
+                  ${canParticipateInLive() && !s.supportId && isOpenShiftForSupport(s) ? (supportOpenShiftReason(s) ? `<button class="small secondary" disabled title="${escapeAttr(supportOpenShiftReason(s))}">Không thể tham gia</button>` : `<button class="small green" onclick="joinShiftAsSupport('${s.id}')">+ Tham gia trợ live</button>`) : ""}
                   ${(canManageShift(s) || isParticipant(s)) ? `<button class="small purple" onclick="openLiveUrlModal('${s.id}')">${s.shopeeLiveId ? "Sửa link live" : "Nhập link live"}</button>` : ""}
                   ${canManageShift(s)?`<button class="small" onclick="editShift('${s.id}')">Sửa</button> <button class="small red" onclick="deleteShift('${s.id}')">Xóa</button> <button class="small secondary" onclick="openHistoryForShift('${s.id}')">Lịch sử</button>`:`<button class="small secondary" onclick="openHistoryForShift('${s.id}')">Lịch sử</button>`}
                 </td>
@@ -4210,8 +4215,9 @@
       const currentShop = document.getElementById("shiftShop")?.value || "";
       const list = db.accounts.filter(a=>{
         if(a.status !== "active") return false;
-        // Host và Trợ live đều chọn từ cùng nhóm Nhân viên.
-        if(roleFilter && normalizedAccountRole(a.role) !== "employee") return false;
+        // Host và Trợ live có thể là Nhân viên hoặc Lead Live.
+        if(roleFilter === "participant" && !isLiveParticipantAccount(a)) return false;
+        if(roleFilter === "employee" && normalizedAccountRole(a.role) !== "employee") return false;
         return currentShop ? accountCanHandleShop(a, currentShop) : true;
       });
       const empty = opts.allowEmpty ? `<option value="" ${!selectedId?"selected":""}>Không có / để trống</option>` : "";
@@ -4340,10 +4346,10 @@
       if(!hostSelect || !supportSelect) return;
       const oldHost = hostSelect.value;
       const oldSupport = supportSelect.value;
-      const hostSelected = db.accounts.some(a=>a.id===oldHost && normalizedAccountRole(a.role)==="employee" && accountCanHandleShop(a, document.getElementById("shiftShop").value)) ? oldHost : "";
-      const supportSelected = db.accounts.some(a=>a.id===oldSupport && normalizedAccountRole(a.role)==="employee" && accountCanHandleShop(a, document.getElementById("shiftShop").value)) ? oldSupport : "";
-      hostSelect.innerHTML = accountOptions("employee", hostSelected);
-      supportSelect.innerHTML = accountOptions("employee", supportSelected, {allowEmpty:true});
+      const hostSelected = db.accounts.some(a=>a.id===oldHost && isLiveParticipantAccount(a) && accountCanHandleShop(a, document.getElementById("shiftShop").value)) ? oldHost : "";
+      const supportSelected = db.accounts.some(a=>a.id===oldSupport && isLiveParticipantAccount(a) && accountCanHandleShop(a, document.getElementById("shiftShop").value)) ? oldSupport : "";
+      hostSelect.innerHTML = accountOptions("participant", hostSelected);
+      supportSelect.innerHTML = accountOptions("participant", supportSelected, {allowEmpty:true});
     }
 
     function openLiveUrlModal(shiftId){
@@ -4430,8 +4436,8 @@
         hostSelect.disabled = true;
         supportSelect.disabled = true;
       }else{
-        hostSelect.innerHTML = accountOptions("employee", "");
-        supportSelect.innerHTML = accountOptions("employee", "", {allowEmpty:true});
+        hostSelect.innerHTML = accountOptions("participant", isLeadLive() ? currentUser.id : "");
+        supportSelect.innerHTML = accountOptions("participant", "", {allowEmpty:true});
         hostSelect.disabled = false;
         supportSelect.disabled = false;
       }
@@ -4450,8 +4456,8 @@
       document.getElementById("shiftEnd").value = s.end;
       document.getElementById("shiftShop").innerHTML = shiftChannelOptions(s.shop);
       document.getElementById("shiftAddChannelBtn").classList.toggle("hidden", !isAdmin());
-      document.getElementById("shiftHost").innerHTML = accountOptions("employee", s.hostId);
-      document.getElementById("shiftSupport").innerHTML = accountOptions("employee", s.supportId || "", {allowEmpty:true});
+      document.getElementById("shiftHost").innerHTML = accountOptions("participant", s.hostId);
+      document.getElementById("shiftSupport").innerHTML = accountOptions("participant", s.supportId || "", {allowEmpty:true});
       document.getElementById("shiftHost").disabled = false;
       document.getElementById("shiftSupport").disabled = false;
       document.getElementById("shiftShopeeLiveUrl").value = s.shopeeLiveUrl || s.shopeeLiveId || "";
@@ -4468,6 +4474,9 @@
       const support = supportId ? db.accounts.find(a=>a.id===supportId) : null;
       if(!host) return toast("Cần chọn host live");
       if(supportId && !support) return toast("Trợ live không hợp lệ");
+      if(!isLiveParticipantAccount(host)) return toast("Host phải là Nhân viên hoặc Lead Live đang hoạt động");
+      if(support && !isLiveParticipantAccount(support)) return toast("Trợ live phải là Nhân viên hoặc Lead Live đang hoạt động");
+      if(supportId && supportId === hostId) return toast("Một tài khoản không thể vừa làm Host vừa làm Trợ live trong cùng ca");
       if(isEmployee() && (hostId !== currentUser.id || supportId)){
         return toast("Nhân viên đăng ký ca sẽ là Host; trợ live tham gia sau");
       }
@@ -4490,6 +4499,11 @@
         goal:document.getElementById("shiftGoal").value.trim()
       };
       if(!base.date || !base.start || !base.end) return toast("Nhập đủ ngày và giờ live");
+      const candidateShift = {...base,id:shiftId || ""};
+      const hostConflict = participantScheduleConflict(candidateShift,hostId);
+      if(hostConflict) return toast(`Host đang trùng lịch với ca ${hostConflict.date} · ${hostConflict.start}-${hostConflict.end} · ${hostConflict.shop || "Khác"}`);
+      const supportConflict = supportId ? participantScheduleConflict(candidateShift,supportId) : null;
+      if(supportConflict) return toast(`Trợ live đang trùng lịch với ca ${supportConflict.date} · ${supportConflict.start}-${supportConflict.end} · ${supportConflict.shop || "Khác"}`);
 
       if(shiftId){
         const s = db.shifts.find(x=>x.id===shiftId);
