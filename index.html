@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gooby Mẹ &amp; Bé – Vận hành Live</title>
+  <title>Gooby Mẹ &amp; Bé – Vận hành Live V38</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
   <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500&amp;display=swap" rel="stylesheet">
@@ -4890,26 +4890,55 @@
       return fromCloud || fromLocal;
     }
 
-    function openShopeeSettings(){
+    async function validateShopeeWorkerEndpoint(endpoint){
+      const controller = new AbortController();
+      const timer = setTimeout(()=>controller.abort(),8000);
+      try{
+        const res = await fetch(`${endpoint}/api/debug/version`,{headers:{"Accept":"application/json"},signal:controller.signal,cache:"no-store"});
+        const data = await res.json().catch(()=>null);
+        if(!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+        if(!String(data.version || "").toUpperCase().includes("V38")) throw new Error(`Worker đang chạy ${data.version || "phiên bản không xác định"}, chưa phải V38`);
+        return data;
+      }finally{ clearTimeout(timer); }
+    }
+
+    async function openShopeeSettings(){
       if(!isAdmin()) return toast("Chỉ admin được cấu hình kết nối Shopee");
       if(!db.settings) db.settings = {};
       const current = getShopeeSyncEndpoint();
       const value = prompt(
-        "Nhập URL Cloudflare Worker Shopee OAuth.\nVí dụ: https://shopee-sync.tenmiencuaban.workers.dev\n\nV20 không cần nhập SHOPEE_SHOPS_JSON thủ công. Sau khi lưu endpoint, vào tab Kết nối Shopee để bấm kết nối từng kênh bán, nhập Live ID khi check-in và theo dõi nhật ký đồng bộ.",
+        `Nhập URL Worker JS V38 (không phải URL web Static Assets).\nVí dụ: https://shopee-sync-v38.tenmiencuaban.workers.dev\n\nHệ thống sẽ kiểm tra /api/debug/version trước khi lưu.`,
         current
       );
       if(value === null) return;
       const clean = String(value || "").trim().replace(/\/$/, "");
+      if(!clean){
+        db.settings.shopeeSyncEndpoint = "";
+        db.settings.shopeeAutoSyncEnabled = false;
+        delete db.settings.shopeeWorkerVersion;
+        localStorage.removeItem(SHOPEE_SYNC_ENDPOINT_KEY);
+        await saveDB({immediate:true});
+        restartShopeeAutoSyncLoop();
+        renderContent();
+        return toast("Đã tắt Worker Shopee");
+      }
+      let versionInfo;
+      try{
+        versionInfo = await validateShopeeWorkerEndpoint(clean);
+      }catch(e){
+        console.error("Worker endpoint không hợp lệ",e);
+        return toast("URL này chưa phải Worker JS V38: " + (e?.message || "Không kết nối được"));
+      }
       db.settings.shopeeSyncEndpoint = clean;
-      db.settings.shopeeAutoSyncEnabled = !!clean;
-      if(clean) localStorage.setItem(SHOPEE_SYNC_ENDPOINT_KEY, clean);
-      else localStorage.removeItem(SHOPEE_SYNC_ENDPOINT_KEY);
-      saveDB({immediate:true});
-      renderShopeeAutoSyncPanel();
-      renderShopeeConnectPanel();
+      db.settings.shopeeAutoSyncEnabled = true;
+      db.settings.shopeeWorkerVersion = String(versionInfo.version || "V38");
+      db.settings.shopeeWorkerCheckedAt = nowText();
+      localStorage.setItem(SHOPEE_SYNC_ENDPOINT_KEY, clean);
+      await saveDB({immediate:true});
       restartShopeeAutoSyncLoop();
-      if(clean) setTimeout(refreshShopeeConnections, 700);
-      toast(clean ? "Đã bật Worker Shopee" : "Đã tắt endpoint Shopee");
+      renderContent();
+      setTimeout(refreshShopeeConnections,400);
+      toast("Đã kết nối Worker " + db.settings.shopeeWorkerVersion);
     }
 
     function shiftTimestampSeconds(date, time){
@@ -4925,9 +4954,12 @@
       if(scheduledTo && scheduledFrom && scheduledTo <= scheduledFrom) scheduledTo += 24*60*60;
       const starts = [s.host?.checkinTs, s.support?.checkinTs].filter(Boolean).map(x=>Math.floor(Number(x)/1000));
       const ends = [s.host?.endTs, s.support?.endTs].filter(Boolean).map(x=>Math.floor(Number(x)/1000));
+      const hostLive = !!(s.host?.checkinTs && !s.host?.endTs);
+      const supportLive = !!(s.supportId && s.support?.checkinTs && !s.support?.endTs);
+      const anyLive = hostLive || supportLive;
       const now = Math.floor(Date.now()/1000);
       const time_from = starts.length ? Math.min(...starts) : scheduledFrom;
-      let time_to = ends.length ? Math.max(...ends) : (computeShiftStatus(s).value === "active" ? now : scheduledTo);
+      let time_to = anyLive ? now : (ends.length ? Math.max(...ends) : scheduledTo);
       if(!time_to || time_to < time_from) time_to = now;
       return {time_from, time_to};
     }
@@ -4961,7 +4993,7 @@
             <div>
               <h2 style="font-size:18px">Tự động đồng bộ Shopee</h2>
               <p>${enabled ? "Đang bật" : "Chưa bật"} · ${candidates.length} ca trong vùng cần đồng bộ · Lần gần nhất: <b>${lastShopeeAutoSyncText}</b></p>
-              <p>V20 ưu tiên lấy dữ liệu theo <b>Live ID phiên live Shopee</b>. Nếu chưa có Live ID hoặc app chưa có API Live, dashboard sẽ hiển thị lỗi rõ để không lấy nhầm đơn ngoài phiên live.</p>
+              <p>V38 ưu tiên lấy dữ liệu theo <b>Live ID phiên live Shopee</b>. Nếu chưa có Live ID hoặc app chưa có API Live, dashboard sẽ hiển thị lỗi rõ để không lấy nhầm đơn ngoài phiên live.</p>
             </div>
             <div class="toolbar">
               ${isAdmin()?`<button class="secondary" onclick="openShopeeSettings()">Cấu hình Worker</button>`:""}
@@ -5740,6 +5772,581 @@
     window.addEventListener("storage", e=>{
       if(e.key===DB_KEY) loadDB().then(renderApp);
     });
+
+
+    /* === GOOBY V38 STORAGE ADAPTER FINAL START === */
+    /*
+     * GOOBY LIVE DASHBOARD V38 STORAGE ADAPTER
+     * Inject this block INSIDE the existing inline <script>, immediately before:
+     *   async function init(){
+     *
+     * The provided patch_dashboard_v38.py does that automatically.
+     *
+     * Goals:
+     * - Keep the current UI/business logic unchanged.
+     * - Move each shift and its shift-owned records to liveDashboardShifts/{shiftId}.
+     * - Keep accounts/settings/channels and bounded global records in liveDashboard/main.
+     * - Use per-shift Firestore transactions + three-way merge to prevent lost updates.
+     * - Realtime subscribe main + sharded shifts.
+     * - Auto-migrate legacy liveDashboard/main.data.shifts without deleting data first.
+     */
+    
+    const V38_STORAGE_SCHEMA_VERSION = 6;
+    const V38_SHIFT_COLLECTION = "liveDashboardShifts";
+    const V38_SHIFT_WRITE_BATCH = 350;
+    const V38_MAX_MAIN_BYTES = 850000;
+    const V38_MAX_SHIFT_BYTES = 850000;
+    const V38_PER_SHIFT_NOTE_RETENTION = 250;
+    const V38_PER_SHIFT_HISTORY_RETENTION = 300;
+    const V38_PER_SHIFT_REQUEST_RETENTION = 120;
+    let v38ShiftUnsubscribe = null;
+    let v38MigrationRunning = false;
+    
+    function v38Clone(value){ return value == null ? value : JSON.parse(JSON.stringify(value)); }
+    function v38MergeWorkerMetrics(baseMetrics,localMetrics,remoteMetrics){
+      const base=baseMetrics&&typeof baseMetrics==="object"?baseMetrics:{};
+      const local=localMetrics&&typeof localMetrics==="object"?localMetrics:{};
+      const remote=remoteMetrics&&typeof remoteMetrics==="object"?remoteMetrics:{};
+      if(!Object.keys(remote).length) return v38Clone(local);
+      if(!Object.keys(local).length) return v38Clone(remote);
+      const merged=threeWayMerge(base,local,remote);
+      // These fields are owned by the Shopee Worker. A local dashboard save must never
+      // erase a newer snapshot/finalization flag written by V38 between two UI writes.
+      const workerKeys=[
+        "source","dataMode","channel","shop_id","user_id","live_id","session_id","session_status",
+        "gmv","orders","coins","view","ctr","co","aov","atc","comments","likes","shares","ccu",
+        "peak_ccu","peakCcu","engage_ccu_1m","engageCcu1m","avgWatch","commerceMetricsAvailable",
+        "engagementMetricsAvailable","currency","rawMetric","rawDetail","capturedWhileLive","finalized",
+        "finalizedAt","finalizedAtTs","dashboardEndTs","time_from","time_to","syncedAt","syncedAtTs",
+        "lastError","lastAttemptError","lastAttemptAt","lastAttemptAtTs","note"
+      ];
+      for(const key of workerKeys){
+        if(Object.prototype.hasOwnProperty.call(remote,key)) merged[key]=v38Clone(remote[key]);
+      }
+      return merged;
+    }
+    function v38ProtectWorkerMetrics(baseEnv,localEnv,remoteEnv,nextEnv){
+      if(!nextEnv?.shift) return nextEnv;
+      const remote=remoteEnv?.shift || {};
+      const local=localEnv?.shift || {};
+      const base=baseEnv?.shift || {};
+      if(remote.shopeeLiveMetrics || local.shopeeLiveMetrics){
+        nextEnv.shift.shopeeLiveMetrics=v38MergeWorkerMetrics(
+          base.shopeeLiveMetrics,local.shopeeLiveMetrics,remote.shopeeLiveMetrics
+        );
+        // Keep the legacy UI alias aligned with the canonical per-session snapshot.
+        nextEnv.shift.shopeeMetrics=v38Clone(nextEnv.shift.shopeeLiveMetrics);
+      }
+      return nextEnv;
+    }
+    function v38ShiftRef(shiftId){ return cloudDB.collection(V38_SHIFT_COLLECTION).doc(String(shiftId)); }
+    function v38WorkerState(shift){
+      if(!shift?.shopeeLiveId || !shift?.host?.checkinTs) return "idle";
+      if(!shift.host.endTs) return "active";
+      const m = shift.shopeeLiveMetrics || {};
+      const expected = String(shift.shopeeLiveId || "");
+      const stored = String(m.live_id || m.session_id || "");
+      const hasSnapshot = !!(expected && stored === expected && m.syncedAtTs && m.capturedWhileLive === true);
+      if(hasSnapshot && !m.finalized) return "finalize_pending";
+      return "done";
+    }
+    function v38ShiftOwnedRows(source, key, shiftId){
+      const rows=(source?.[key] || []).filter(x=>String(x?.shiftId || "") === String(shiftId));
+      const sorted=rows.slice().sort((a,b)=>Number(a?.ts || a?.reviewedTs || 0)-Number(b?.ts || b?.reviewedTs || 0));
+      const limit=key === "notes" ? V38_PER_SHIFT_NOTE_RETENTION : (key === "histories" ? V38_PER_SHIFT_HISTORY_RETENTION : V38_PER_SHIFT_REQUEST_RETENTION);
+      if(key === "reportEditRequests" || key === "lateReportRequests"){
+        const pending=sorted.filter(x=>x?.status === "pending" || (x?.status === "approved" && !x?.consumed));
+        const completed=sorted.filter(x=>!pending.includes(x)).slice(-limit);
+        return dedupeEntities([...pending,...completed]);
+      }
+      return dedupeEntities(sorted).slice(-limit);
+    }
+    function v38JsonBytes(value){
+      try{return new TextEncoder().encode(JSON.stringify(value)).length;}catch(_){return Number.MAX_SAFE_INTEGER;}
+    }
+    function v38BoundRowsByShift(items,key,globalLimit){
+      const globalRows=[]; const byShift=new Map();
+      for(const row of items || []){
+        const sid=String(row?.shiftId || "");
+        if(!sid){globalRows.push(row);continue;}
+        if(!byShift.has(sid))byShift.set(sid,[]);
+        byShift.get(sid).push(row);
+      }
+      const out=dedupeEntities(globalRows).sort((a,b)=>Number(a?.ts||0)-Number(b?.ts||0)).slice(-globalLimit);
+      for(const [sid,rows] of byShift){
+        const source={}; source[key]=rows;
+        out.push(...v38ShiftOwnedRows(source,key,sid));
+      }
+      return dedupeEntities(out);
+    }
+    // V38 override: bounds are applied per shift instead of cutting the whole database globally.
+    function applyOperationalBounds(target){
+      if(!target || typeof target !== "object") return target;
+      target.schemaVersion=V38_STORAGE_SCHEMA_VERSION;
+      target.accounts=dedupeEntities(target.accounts || []);
+      target.shifts=dedupeEntities(target.shifts || []);
+      target.notes=v38BoundRowsByShift(target.notes || [],"notes",300);
+      target.histories=v38BoundRowsByShift(target.histories || [],"histories",300);
+      target.dataLogs=dedupeEntities(target.dataLogs || []).sort((a,b)=>Number(a?.ts||0)-Number(b?.ts||0)).slice(-MAIN_LOG_RETENTION);
+      target.reportEditRequests=v38BoundRowsByShift(target.reportEditRequests || [],"reportEditRequests",REVIEWED_REQUEST_RETENTION);
+      target.lateReportRequests=v38BoundRowsByShift(target.lateReportRequests || [],"lateReportRequests",REVIEWED_REQUEST_RETENTION);
+      target.channels=[...new Map((target.channels || []).map(x=>[String(x||"").trim().toLowerCase(),String(x||"").trim()])).values()].filter(Boolean);
+      return target;
+    }
+    function v38ShiftEnvelope(source, shift){
+      return {
+        shift:v38Clone(shift),
+        notes:v38Clone(v38ShiftOwnedRows(source,"notes",shift.id)),
+        histories:v38Clone(v38ShiftOwnedRows(source,"histories",shift.id)),
+        reportEditRequests:v38Clone(v38ShiftOwnedRows(source,"reportEditRequests",shift.id)),
+        lateReportRequests:v38Clone(v38ShiftOwnedRows(source,"lateReportRequests",shift.id))
+      };
+    }
+    function v38EnvelopeMetadata(envelope){
+      const s = envelope.shift || {};
+      return {
+        shift:envelope.shift,
+        notes:envelope.notes || [],
+        histories:envelope.histories || [],
+        reportEditRequests:envelope.reportEditRequests || [],
+        lateReportRequests:envelope.lateReportRequests || [],
+        workerState:v38WorkerState(s),
+        date:String(s.date || ""),
+        shop:String(s.shop || ""),
+        liveId:String(s.shopeeLiveId || ""),
+        hostId:String(s.hostId || ""),
+        supportId:String(s.supportId || ""),
+        hostCheckinTs:Number(s.host?.checkinTs || 0),
+        hostEndTs:Number(s.host?.endTs || 0),
+        updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAtText:nowText(),
+        updatedBy:currentUser?.name || "system"
+      };
+    }
+    function v38MainData(source){
+      const out = v38Clone(source || {});
+      out.shifts = [];
+      out.notes = (out.notes || []).filter(x=>!x?.shiftId);
+      out.histories = (out.histories || []).filter(x=>!x?.shiftId);
+      out.reportEditRequests = (out.reportEditRequests || []).filter(x=>!x?.shiftId);
+      out.lateReportRequests = (out.lateReportRequests || []).filter(x=>!x?.shiftId);
+      if(!out.settings || typeof out.settings !== "object") out.settings = {};
+      out.settings.storageMode = "v38_sharded";
+      out.settings.storageSchemaVersion = V38_STORAGE_SCHEMA_VERSION;
+      return out;
+    }
+    function v38Hydrate(mainData, envelopes){
+      const out = v38Clone(mainData || {});
+      out.shifts = [];
+      out.notes = Array.isArray(out.notes) ? out.notes.filter(x=>!x?.shiftId) : [];
+      out.histories = Array.isArray(out.histories) ? out.histories.filter(x=>!x?.shiftId) : [];
+      out.reportEditRequests = Array.isArray(out.reportEditRequests) ? out.reportEditRequests.filter(x=>!x?.shiftId) : [];
+      out.lateReportRequests = Array.isArray(out.lateReportRequests) ? out.lateReportRequests.filter(x=>!x?.shiftId) : [];
+      for(const env of envelopes || []){
+        if(!env?.shift?.id) continue;
+        out.shifts.push(v38Clone(env.shift));
+        out.notes.push(...v38Clone(env.notes || []));
+        out.histories.push(...v38Clone(env.histories || []));
+        out.reportEditRequests.push(...v38Clone(env.reportEditRequests || []));
+        out.lateReportRequests.push(...v38Clone(env.lateReportRequests || []));
+      }
+      return out;
+    }
+    function v38ReplaceEnvelopeInDb(targetDb, envelope){
+      if(!targetDb || !envelope?.shift?.id) return;
+      const shiftId = String(envelope.shift.id);
+      targetDb.shifts = (targetDb.shifts || []).filter(s=>String(s.id)!==shiftId);
+      targetDb.shifts.push(v38Clone(envelope.shift));
+      for(const key of ["notes","histories","reportEditRequests","lateReportRequests"]){
+        targetDb[key] = (targetDb[key] || []).filter(x=>String(x?.shiftId || "") !== shiftId);
+        targetDb[key].push(...v38Clone(envelope[key] || []));
+      }
+    }
+    function v38RemoveShiftFromDb(targetDb, shiftId){
+      if(!targetDb) return;
+      shiftId = String(shiftId);
+      targetDb.shifts = (targetDb.shifts || []).filter(s=>String(s.id)!==shiftId);
+      for(const key of ["notes","histories","reportEditRequests","lateReportRequests"]){
+        targetDb[key] = (targetDb[key] || []).filter(x=>String(x?.shiftId || "") !== shiftId);
+      }
+    }
+    async function v38ReadAllEnvelopes(){
+      const snap = await cloudDB.collection(V38_SHIFT_COLLECTION).get();
+      return snap.docs.map(doc=>{
+        const data = doc.data() || {};
+        if(data.shift) return {
+          shift:v38Clone(data.shift),
+          notes:v38Clone(data.notes || []),
+          histories:v38Clone(data.histories || []),
+          reportEditRequests:v38Clone(data.reportEditRequests || []),
+          lateReportRequests:v38Clone(data.lateReportRequests || [])
+        };
+        return data.id ? {shift:v38Clone(data),notes:[],histories:[],reportEditRequests:[],lateReportRequests:[]} : null;
+      }).filter(Boolean);
+    }
+    async function v38CollectionHasData(){
+      const snap = await cloudDB.collection(V38_SHIFT_COLLECTION).limit(1).get();
+      return !snap.empty;
+    }
+    async function v38MigrateLegacy(mainPayload){
+      if(v38MigrationRunning) return;
+      const legacy = v38Clone(mainPayload?.data || {});
+      const legacyShifts = Array.isArray(legacy.shifts) ? legacy.shifts : [];
+      if(!legacyShifts.length) return;
+      v38MigrationRunning = true;
+      try{
+        // Idempotent/resumable migration: preserve already-created shard docs and write
+        // only missing ones. The legacy main document is cleared only after every
+        // legacy shift has a shard, so an interrupted migration cannot lose data.
+        const existingSnap=await cloudDB.collection(V38_SHIFT_COLLECTION).get();
+        const existingIds=new Set(existingSnap.docs.map(doc=>String(doc.id)));
+        const missing=legacyShifts.filter(shift=>shift?.id && !existingIds.has(String(shift.id)));
+        for(let offset=0; offset<missing.length; offset+=V38_SHIFT_WRITE_BATCH){
+          const batch = cloudDB.batch();
+          for(const shift of missing.slice(offset,offset+V38_SHIFT_WRITE_BATCH)){
+            const envelope = v38ShiftEnvelope(legacy,shift);
+            const meta=v38EnvelopeMetadata(envelope);
+            const bytes=v38JsonBytes({...meta,updatedAt:null});
+            if(bytes>V38_MAX_SHIFT_BYTES) throw new Error(`Ca ${shift.id} quá lớn (${Math.round(bytes/1024)}KB); chưa xóa dữ liệu legacy để tránh mất dữ liệu.`);
+            batch.set(v38ShiftRef(shift.id),meta,{merge:true});
+          }
+          await batch.commit();
+        }
+        const verifySnap=await cloudDB.collection(V38_SHIFT_COLLECTION).get();
+        const verifiedIds=new Set(verifySnap.docs.map(doc=>String(doc.id)));
+        const notMigrated=legacyShifts.filter(shift=>shift?.id && !verifiedIds.has(String(shift.id)));
+        if(notMigrated.length) throw new Error(`Migration V38 chưa đủ ${notMigrated.length} ca; giữ nguyên dữ liệu legacy để thử lại.`);
+    
+        await cloudDB.runTransaction(async transaction=>{
+          const snap = await transaction.get(cloudDocRef);
+          const current = snap.exists && snap.data()?.data ? v38Clone(snap.data().data) : legacy;
+          // If another client already completed migration, do not reintroduce old rows.
+          if(!Array.isArray(current.shifts) || !current.shifts.length) return;
+          const nextMain = v38MainData(current);
+          transaction.set(cloudDocRef,{
+            data:nextMain,
+            schemaVersion:V38_STORAGE_SCHEMA_VERSION,
+            storageMode:"v38_sharded",
+            migratedAt:firebase.firestore.FieldValue.serverTimestamp(),
+            migratedAtText:nowText(),
+            updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAtText:nowText(),
+            updatedBy:currentUser?.name || "V38 migration"
+          },{merge:true});
+        });
+        console.info(`V38 migration hoàn tất: ${legacyShifts.length} ca · tạo mới ${missing.length} shard`);
+      }finally{ v38MigrationRunning = false; }
+    }
+    
+    // ---------- V38 override: load ----------
+    async function loadDB(){
+      initCloudDB();
+      if(cloudReady){
+        try{
+          let snap = await cloudDocRef.get();
+          if(snap.exists && snap.data()?.data){
+            const payload = snap.data() || {};
+            if(Array.isArray(payload.data.shifts) && payload.data.shifts.length){
+              await v38MigrateLegacy(payload);
+              snap = await cloudDocRef.get();
+            }
+            const mainData = snap.exists && snap.data()?.data ? v38Clone(snap.data().data) : {};
+            const envelopes = await v38ReadAllEnvelopes();
+            db = envelopes.length ? v38Hydrate(mainData,envelopes) : v38Clone(mainData);
+            applyDbDefaults();
+            lastSyncedDb = v38Clone(db);
+            localDirty = false;
+            persistLocalSnapshot();
+          }else{
+            const raw = localStorage.getItem(DB_KEY);
+            if(raw){ try{db=JSON.parse(raw);}catch(e){await seedDB();} } else await seedDB();
+            applyDbDefaults();
+            await saveDB({immediate:true});
+          }
+        }catch(e){
+          console.error("Không đọc được Firestore V38, chuyển sang LocalStorage",e);
+          cloudReady=false;
+          await loadLocalDB();
+          scheduleCloudReconnect();
+        }
+      }else await loadLocalDB();
+      applyDbDefaults();
+      const userId=sessionStorage.getItem(SESSION_KEY);
+      currentUser=db.accounts.find(a=>a.id===userId)||null;
+      if(cloudReady) startCloudRealtimeSync();
+    }
+    
+    // ---------- V38 override: reconnect ----------
+    function scheduleCloudReconnect(delay=12000){
+      if(cloudReconnectTimer || cloudReady || !hasFirebaseConfig()) return;
+      cloudReconnectTimer=setTimeout(async()=>{
+        cloudReconnectTimer=null;
+        if(!initCloudDB()){scheduleCloudReconnect(30000);return;}
+        try{
+          const snap=await cloudDocRef.get();
+          const main=snap.exists&&snap.data()?.data?v38Clone(snap.data().data):{};
+          const envs=await v38ReadAllEnvelopes();
+          const remote=v38Hydrate(main,envs);
+          db=mergeOfflineDb(db,remote);
+          lastSyncedDb=remote;
+          localDirty=true;
+          applyDbDefaults();
+          persistLocalSnapshot();
+          startCloudRealtimeSync();
+          await saveDB({immediate:true,retry:true});
+          renderApp();
+          toast("Đã kết nối lại và đồng bộ dữ liệu cloud V38");
+        }catch(e){
+          console.error("Chưa kết nối lại được Firestore V38",e);
+          cloudReady=false;
+          scheduleCloudReconnect(30000);
+        }
+      },Math.max(1000,delay));
+    }
+    
+    async function v38SaveMain(requestedBase,requestedLocal){
+      const localMain=v38MainData(requestedLocal);
+      const baseMain=requestedBase?v38MainData(requestedBase):null;
+      return cloudDB.runTransaction(async transaction=>{
+        const snap=await transaction.get(cloudDocRef);
+        const remoteMain=snap.exists&&snap.data()?.data?v38MainData(snap.data().data):null;
+        const next=!remoteMain||!baseMain?v38Clone(localMain):threeWayMerge(baseMain,localMain,remoteMain);
+        applyOperationalBounds(next);
+        const bytes=v38JsonBytes({data:next});
+        if(bytes>V38_MAX_MAIN_BYTES) throw new Error(`Dữ liệu cấu hình chính quá lớn (${Math.round(bytes/1024)}KB). Hệ thống không ghi đè để tránh lỗi Firestore.`);
+        transaction.set(cloudDocRef,{
+          data:next,
+          documentBytes:bytes,
+          schemaVersion:V38_STORAGE_SCHEMA_VERSION,
+          storageMode:"v38_sharded",
+          updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+          updatedAtText:nowText(),
+          updatedBy:currentUser?currentUser.name:"system"
+        },{merge:true});
+        return next;
+      });
+    }
+    async function v38SaveEnvelope(baseDb,localDb,shiftId){
+      const localShift=(localDb.shifts||[]).find(s=>String(s.id)===String(shiftId));
+      const baseShift=(baseDb?.shifts||[]).find(s=>String(s.id)===String(shiftId));
+      const ref=v38ShiftRef(shiftId);
+      if(!localShift && baseShift){
+        return cloudDB.runTransaction(async transaction=>{
+          const snap=await transaction.get(ref);
+          if(!snap.exists) return {deleted:true,shiftId};
+          const remote=snap.data()||{};
+          const remoteEnv={shift:remote.shift,notes:remote.notes||[],histories:remote.histories||[],reportEditRequests:remote.reportEditRequests||[],lateReportRequests:remote.lateReportRequests||[]};
+          const baseEnv=v38ShiftEnvelope(baseDb,baseShift);
+          if(deepEqual(remoteEnv,baseEnv)){
+            transaction.delete(ref);
+            return {deleted:true,shiftId};
+          }
+          return {deleted:false,conflict:true,envelope:remoteEnv};
+        });
+      }
+      if(!localShift) return {deleted:true,shiftId};
+      const localEnv=v38ShiftEnvelope(localDb,localShift);
+      const baseEnv=baseShift&&baseDb?v38ShiftEnvelope(baseDb,baseShift):null;
+      if(baseEnv&&deepEqual(localEnv,baseEnv)) return {unchanged:true,envelope:localEnv};
+      return cloudDB.runTransaction(async transaction=>{
+        const snap=await transaction.get(ref);
+        const data=snap.exists?snap.data()||{}:null;
+        const remoteEnv=data?.shift?{shift:v38Clone(data.shift),notes:v38Clone(data.notes||[]),histories:v38Clone(data.histories||[]),reportEditRequests:v38Clone(data.reportEditRequests||[]),lateReportRequests:v38Clone(data.lateReportRequests||[])}:null;
+        let next=!remoteEnv||!baseEnv?v38Clone(localEnv):threeWayMerge(baseEnv,localEnv,remoteEnv);
+        next=v38ProtectWorkerMetrics(baseEnv,localEnv,remoteEnv,next);
+        const meta=v38EnvelopeMetadata(next);
+        const bytes=v38JsonBytes({...meta,updatedAt:null});
+        if(bytes>V38_MAX_SHIFT_BYTES) throw new Error(`Ca ${shiftId} quá lớn (${Math.round(bytes/1024)}KB). Hệ thống giữ bản cục bộ và không ghi đè document lỗi.`);
+        meta.documentBytes=bytes;
+        transaction.set(ref,meta,{merge:true});
+        return {saved:true,envelope:next};
+      });
+    }
+    
+    // ---------- V38 override: save ----------
+    async function flushCloudSave(){
+      if(!cloudReady||!cloudDB||!cloudDocRef||!db) return {ok:false,localOnly:true};
+      const requestedLocal=v38Clone(db);
+      const requestedBase=lastSyncedDb?v38Clone(lastSyncedDb):null;
+      applyOperationalBounds(requestedLocal);
+      cloudWriteInFlight++;
+      try{
+        const mergedMain=await v38SaveMain(requestedBase,requestedLocal);
+        const ids=[...new Set([...(requestedBase?.shifts||[]).map(s=>String(s.id)),...(requestedLocal.shifts||[]).map(s=>String(s.id))])];
+        const changedIds=ids.filter(shiftId=>{
+          const l=(requestedLocal.shifts||[]).find(s=>String(s.id)===shiftId);
+          const b=(requestedBase?.shifts||[]).find(s=>String(s.id)===shiftId);
+          if(!l||!b) return true;
+          return !deepEqual(v38ShiftEnvelope(requestedLocal,l),v38ShiftEnvelope(requestedBase,b));
+        });
+        const remoteResults=[];
+        for(const shiftId of changedIds) remoteResults.push(await v38SaveEnvelope(requestedBase,requestedLocal,shiftId));
+    
+        const synced=v38Hydrate(mergedMain,[]);
+        // Start from base/current local for unchanged docs, then replace changed docs with transaction results.
+        synced.shifts=v38Clone(requestedLocal.shifts||[]);
+        synced.notes=v38Clone(requestedLocal.notes||[]);
+        synced.histories=v38Clone(requestedLocal.histories||[]);
+        synced.reportEditRequests=v38Clone(requestedLocal.reportEditRequests||[]);
+        synced.lateReportRequests=v38Clone(requestedLocal.lateReportRequests||[]);
+        for(const r of remoteResults){
+          if(r?.deleted) v38RemoveShiftFromDb(synced,r.shiftId);
+          else if(r?.envelope) v38ReplaceEnvelopeInDb(synced,r.envelope);
+        }
+        applyOperationalBounds(synced);
+        const newerLocal=v38Clone(db);
+        db=threeWayMerge(requestedLocal,newerLocal,synced);
+        applyDbDefaults();
+        lastSyncedDb=v38Clone(synced);
+        localDirty=!deepEqual(db,synced);
+        lastCloudSaveError="";
+        persistLocalSnapshot();
+        if(localDirty) scheduleCloudRetry(250);
+        return {ok:true,changedShiftCount:changedIds.length};
+      }catch(err){
+        console.error("Không lưu được Firestore V38",err);
+        localDirty=true;
+        lastCloudSaveError=err?.message||String(err);
+        warnStorage(lastCloudSaveError||"Không lưu được lên Firestore. Dữ liệu cục bộ vẫn được giữ.");
+        scheduleCloudRetry(5000);
+        return {ok:false,error:err};
+      }finally{cloudWriteInFlight=Math.max(0,cloudWriteInFlight-1);}
+    }
+    
+    // ---------- V38 override: realtime ----------
+    function startCloudRealtimeSync(){
+      if(!cloudReady||!cloudDocRef||cloudUnsubscribe) return;
+      const mainUnsub=cloudDocRef.onSnapshot(snap=>{
+        if(!snap.exists||!snap.data()?.data)return;
+        try{
+          const incomingMain=v38MainData(snap.data().data);
+          const currentMain=v38MainData(db||{});
+          const baseMain=lastSyncedDb?v38MainData(lastSyncedDb):null;
+          const mergedMain=localDirty&&baseMain?threeWayMerge(baseMain,currentMain,incomingMain):incomingMain;
+          const currentShifts=v38Clone(db?.shifts||[]), currentNotes=v38Clone(db?.notes||[]), currentHist=v38Clone(db?.histories||[]), currentReq=v38Clone(db?.reportEditRequests||[]), currentLate=v38Clone(db?.lateReportRequests||[]);
+          syncingFromCloud=true;
+          db=v38Hydrate(mergedMain,[]);
+          db.shifts=currentShifts; db.notes.push(...currentNotes.filter(x=>x?.shiftId)); db.histories.push(...currentHist.filter(x=>x?.shiftId)); db.reportEditRequests.push(...currentReq.filter(x=>x?.shiftId)); db.lateReportRequests.push(...currentLate.filter(x=>x?.shiftId));
+          if(!lastSyncedDb){
+            lastSyncedDb=v38Clone(db);
+          }else{
+            const preservedEnvelopes=(lastSyncedDb.shifts || []).map(shift=>v38ShiftEnvelope(lastSyncedDb,shift));
+            lastSyncedDb=v38Hydrate(incomingMain,preservedEnvelopes);
+          }
+          applyDbDefaults(); persistLocalSnapshot();
+          const userId=sessionStorage.getItem(SESSION_KEY); currentUser=db.accounts.find(a=>a.id===userId)||null;
+          renderApp(); syncingFromCloud=false; if(localDirty)scheduleCloudRetry(250);
+        }catch(e){syncingFromCloud=false;console.error("Lỗi realtime main V38",e);}
+      },err=>{console.error("Lỗi realtime main Firestore",err);warnStorage("Lỗi đồng bộ Firestore main. Hệ thống sẽ thử lại.");});
+    
+      v38ShiftUnsubscribe=cloudDB.collection(V38_SHIFT_COLLECTION).onSnapshot(snap=>{
+        try{
+          syncingFromCloud=true;
+          for(const change of snap.docChanges()){
+            const data=change.doc.data()||{};
+            const shiftId=String(data.shift?.id||change.doc.id);
+            if(change.type==="removed"){
+              const baseShift=(lastSyncedDb?.shifts||[]).find(s=>String(s.id)===shiftId);
+              const localShift=(db?.shifts||[]).find(s=>String(s.id)===shiftId);
+              if(!localDirty||!baseShift||deepEqual(baseShift,localShift)) v38RemoveShiftFromDb(db,shiftId);
+              if(lastSyncedDb)v38RemoveShiftFromDb(lastSyncedDb,shiftId);
+              continue;
+            }
+            if(!data.shift)continue;
+            const remoteEnv={shift:v38Clone(data.shift),notes:v38Clone(data.notes||[]),histories:v38Clone(data.histories||[]),reportEditRequests:v38Clone(data.reportEditRequests||[]),lateReportRequests:v38Clone(data.lateReportRequests||[])};
+            const baseShift=(lastSyncedDb?.shifts||[]).find(s=>String(s.id)===shiftId);
+            const localShift=(db?.shifts||[]).find(s=>String(s.id)===shiftId);
+            let nextEnv=remoteEnv;
+            if(localDirty&&baseShift&&localShift){
+              const baseEnv=v38ShiftEnvelope(lastSyncedDb,baseShift);
+              const localEnv=v38ShiftEnvelope(db,localShift);
+              nextEnv=threeWayMerge(baseEnv,localEnv,remoteEnv);
+              nextEnv=v38ProtectWorkerMetrics(baseEnv,localEnv,remoteEnv,nextEnv);
+            }else{
+              nextEnv=v38ProtectWorkerMetrics(null,{shift:localShift||{}},remoteEnv,nextEnv);
+            }
+            v38ReplaceEnvelopeInDb(db,nextEnv);
+            if(!lastSyncedDb)lastSyncedDb=v38Clone(db); else v38ReplaceEnvelopeInDb(lastSyncedDb,remoteEnv);
+          }
+          applyDbDefaults(); persistLocalSnapshot();
+          const userId=sessionStorage.getItem(SESSION_KEY); currentUser=db.accounts.find(a=>a.id===userId)||null;
+          renderApp(); syncingFromCloud=false; if(localDirty)scheduleCloudRetry(250);
+        }catch(e){syncingFromCloud=false;console.error("Lỗi realtime shifts V38",e);}
+      },err=>{console.error("Lỗi realtime shift collection",err);warnStorage("Lỗi đồng bộ danh sách ca live. Hệ thống sẽ thử lại.");});
+    
+      cloudUnsubscribe=()=>{try{mainUnsub&&mainUnsub();}catch(e){} try{v38ShiftUnsubscribe&&v38ShiftUnsubscribe();}catch(e){} v38ShiftUnsubscribe=null; cloudUnsubscribe=null;};
+    }
+    
+    // ---------- V38 override: atomic support join ----------
+    async function joinShiftAsSupport(shiftId){
+      if(!canParticipateInLive()) return toast("Chỉ Nhân viên hoặc Lead Live được tham gia vị trí trợ live");
+      const localShift=db.shifts.find(s=>s.id===shiftId);
+      const localReason=supportOpenShiftReason(localShift);
+      if(localReason)return toast(localReason);
+      if(!confirm(`Tham gia trợ live ca ${localShift.date} · ${localShift.start}-${localShift.end} · ${localShift.shop}?`))return;
+      const actionKey=`join-support:${shiftId}:${currentUser.id}`;
+      if(!beginAction(actionKey))return;
+      try{
+        if(cloudReady&&cloudDB&&cloudDocRef){
+          const result=await cloudDB.runTransaction(async transaction=>{
+            const mainSnap=await transaction.get(cloudDocRef);
+            if(!mainSnap.exists)throw new Error("Không tìm thấy dữ liệu dashboard trên Firestore V38");
+            const mainData=v38Clone(mainSnap.data()?.data||{});
+            const remoteAccount=(mainData.accounts||[]).find(a=>a.id===currentUser.id&&isLiveParticipantAccount(a));
+            if(!remoteAccount)throw new Error("Tài khoản không còn quyền tham gia ca live");
+    
+            // Read every currently-known overlapping shift BEFORE any write. If two devices
+            // try to put the same employee into overlapping shifts at the same time, at
+            // least one transaction retries because it read the document the other changed.
+            const targetLocal=(db.shifts||[]).find(s=>String(s.id)===String(shiftId));
+            const overlapIds=(db.shifts||[]).filter(s=>{
+              if(!targetLocal||String(s.id)===String(shiftId))return true;
+              if(String(s.date||"")!==String(targetLocal.date||""))return false;
+              const aStart=String(s.start||""),aEnd=String(s.end||""),bStart=String(targetLocal.start||""),bEnd=String(targetLocal.end||"");
+              return aStart < bEnd && bStart < aEnd;
+            }).map(s=>String(s.id));
+            if(!overlapIds.includes(String(shiftId)))overlapIds.push(String(shiftId));
+            const freshShifts=[]; let targetSnap=null;
+            for(const idValue of [...new Set(overlapIds)]){
+              const snap=await transaction.get(v38ShiftRef(idValue));
+              if(String(idValue)===String(shiftId))targetSnap=snap;
+              if(snap.exists&&snap.data()?.shift)freshShifts.push(v38Clone(snap.data().shift));
+            }
+            if(!targetSnap?.exists)throw new Error("Không tìm thấy dữ liệu ca trên Firestore V38");
+            const raw=targetSnap.data()||{};
+            const remoteShift=v38Clone(raw.shift||{});
+            const reason=supportOpenShiftReason(remoteShift,remoteAccount,freshShifts);
+            if(reason)throw new Error(reason);
+            remoteShift.supportId=remoteAccount.id;
+            remoteShift.supportName=remoteAccount.name;
+            remoteShift.support=remoteShift.support||{checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""};
+            remoteShift.supportJoinedAt=nowText(); remoteShift.supportJoinedTs=nowTs();
+            const envelope={shift:remoteShift,notes:v38Clone(raw.notes||[]),histories:v38Clone(raw.histories||[]),reportEditRequests:v38Clone(raw.reportEditRequests||[]),lateReportRequests:v38Clone(raw.lateReportRequests||[])};
+            transaction.set(v38ShiftRef(shiftId),v38EnvelopeMetadata(envelope),{merge:true});
+            return {envelope,account:remoteAccount};
+          });
+          v38ReplaceEnvelopeInDb(db,result.envelope);
+          appendSupportJoinLog(db,result.envelope.shift,result.account,"Firestore V38 + LocalStorage cache");
+          lastSyncedDb=lastSyncedDb||v38Clone(db); v38ReplaceEnvelopeInDb(lastSyncedDb,result.envelope);
+          localDirty=true; persistLocalSnapshot(); await saveDB({immediate:true});
+        }else{
+          localShift.supportId=currentUser.id; localShift.supportName=currentUser.name;
+          localShift.support=localShift.support||{checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""};
+          localShift.supportJoinedAt=nowText(); localShift.supportJoinedTs=nowTs();
+          appendSupportJoinLog(db,localShift,currentUser,"LocalStorage"); await saveDB({immediate:true});
+        }
+        renderContent(); toast("Đã tham gia ca với vai trò trợ live");
+      }catch(e){console.error("Không tham gia được ca live V38",e);toast(e?.message||"Không tham gia được ca live");}
+      finally{endAction(actionKey);}
+    }
+    
+    // ---------- V38 status text ----------
+    function cloudStatusText(){
+      if(cloudReady&&localDirty)return "Cloud Firestore V38: đang đồng bộ thay đổi";
+      if(cloudReady&&lastCloudSaveError)return "Cloud Firestore V38: có lỗi lưu, hệ thống đang thử lại";
+      return cloudReady?"Cloud Firestore V38: dữ liệu đã tách theo từng ca":"LocalStorage: dữ liệu chỉ lưu trên máy này";
+    }
+    /* === GOOBY V38 STORAGE ADAPTER FINAL END === */
 
     async function init(){
       await loadDB();
