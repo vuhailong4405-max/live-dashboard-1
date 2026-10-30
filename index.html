@@ -6278,6 +6278,7 @@
               await v38MigrateLegacy(payload);
               snap = await cloudDocRef.get({source:"server"});
             }
+            if(snap.data()?.logsInSubcollection) v39LogsInSubcollection = true;
             const mainData = snap.exists && snap.data()?.data ? v38Clone(snap.data().data) : {};
             const envelopes = await v38ReadEnvelopes();
             envelopes.push(...await v39ReadPendingOutsideWindow(cached,envelopes));
@@ -6322,6 +6323,7 @@
         if(!initCloudDB()){scheduleCloudReconnect(30000);return;}
         try{
           const snap=await cloudDocRef.get({source:"server"});
+          if(snap.data()?.logsInSubcollection) v39LogsInSubcollection=true;
           const main=snap.exists&&snap.data()?.data?v38Clone(snap.data().data):{};
           const envs=await v38ReadEnvelopes();
           // Ca cũ đã mở thêm ngoài khoảng ngày vẫn giữ bản đã đồng bộ trước đó.
