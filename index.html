@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gooby Mẹ &amp; Bé – Vận hành Live V38</title>
+  <title>Gooby Mẹ &amp; Bé – Vận hành Live V39</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
   <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500&amp;display=swap" rel="stylesheet">
@@ -1105,6 +1105,61 @@
       .channel-hero-content h2{font-size:26px;line-height:1.22}
     }
   </style>
+  <style id="v39-employee-ui">
+    /* Trạng thái lưu dữ liệu luôn hiển thị trên header */
+    .sync-pill{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+    .sync-pill::before{content:"";width:8px;height:8px;border-radius:50%;background:#4ade80;flex:none}
+    .sync-pill[data-state="busy"]::before{background:#fbbf24;animation:syncPulse 1s ease-in-out infinite}
+    .sync-pill[data-state="warn"]::before{background:#fbbf24}
+    .sync-pill[data-state="error"]{background:rgba(220,38,38,.28);border-color:rgba(254,202,202,.5);color:#fff}
+    .sync-pill[data-state="error"]::before{background:#fca5a5}
+    @keyframes syncPulse{50%{opacity:.35}}
+
+    /* Màn hình "Ca live của tôi" */
+    .my-shift-board{display:flex;flex-direction:column;gap:14px}
+    .my-shift-focus{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:18px;align-items:stretch;border-left:4px solid var(--primary)}
+    .my-shift-eyebrow{font-size:10.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--primary-dark)}
+    .my-shift-next-title{font-size:17px;font-weight:700;color:var(--ink);margin:6px 0 4px;line-height:1.35}
+    .my-shift-next .meta{line-height:1.6}
+    .my-shift-next-action{margin-top:12px;display:flex;flex-wrap:wrap;gap:8px}
+    .my-shift-next-action button{font-size:15px;padding:12px 22px;min-height:46px}
+    .my-shift-counts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-content:start}
+    .my-shift-count{display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid var(--line-soft);border-radius:6px;font-size:12.5px;color:var(--muted);background:var(--bg)}
+    .my-shift-count .count{font-size:17px;font-weight:700;color:var(--muted2);min-width:20px;font-variant-numeric:tabular-nums}
+    .my-shift-count.has-items{color:var(--text);background:var(--card);border-color:var(--line)}
+    .my-shift-count.has-items .count{color:var(--ink)}
+    .my-shift-count.has-items[data-group="live"] .count{color:var(--green)}
+    .my-shift-count.has-items[data-group="report"] .count,.my-shift-count.has-items[data-group="missed"] .count{color:var(--red)}
+    .my-shift-group{border-top:1px solid var(--line);padding-top:4px}
+    .my-shift-group > summary{list-style:none;cursor:pointer;display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;padding:10px 2px;user-select:none}
+    .my-shift-group > summary::-webkit-details-marker{display:none}
+    .my-shift-group > summary::before{content:"›";font-size:20px;line-height:1;color:var(--muted);transition:transform .15s var(--ease);width:12px}
+    .my-shift-group[open] > summary::before{transform:rotate(90deg)}
+    .my-shift-group-title{font-size:15px;font-weight:700;color:var(--ink)}
+    .my-shift-group > summary .meta{flex-basis:100%;padding-left:22px;margin-top:-4px}
+    .my-shift-group[data-group="live"] .my-shift-group-title{color:var(--green)}
+    .my-shift-group[data-group="report"] .my-shift-group-title{color:var(--red)}
+    .compact-card .actions{margin:12px 0 4px;padding-top:0;border-top:0}
+    .compact-schedule{margin:12px 0 4px;padding:9px 12px;border-radius:6px;background:var(--bg);font-size:13px;font-weight:600;color:var(--ink2)}
+
+    /* Khoảng ngày ca live đang tải */
+    .shift-window-note{margin-top:6px;font-size:12.5px;color:var(--muted);display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
+    button.link-button{background:none;border:0;box-shadow:none;padding:2px 0;color:var(--primary-dark);font-size:12.5px;font-weight:600;text-decoration:underline;text-underline-offset:2px}
+    button.link-button:hover{background:none;box-shadow:none;transform:none;color:var(--ink)}
+
+    /* Sao lưu & khôi phục */
+    .v39-backup-status p{margin:8px 0 0}
+    .v39-backup-toolbar{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}
+    .v39-backup-toolbar select{flex:1 1 280px;min-width:0}
+    .v39-row-actions{white-space:nowrap}
+    .v39-row-actions button{margin:2px}
+
+    @media(max-width:720px){
+      .my-shift-focus{grid-template-columns:1fr}
+      .my-shift-next-action button{flex:1 1 100%}
+      .compact-card .actions button{flex:1 1 calc(50% - 6px);min-height:44px;font-size:13.5px}
+    }
+  </style>
 </head>
 <body>
   <section id="loginPage" class="login-page">
@@ -1139,6 +1194,7 @@
           </div>
         </div>
         <div class="user-box">
+          <div class="user-pill sync-pill" id="syncPill" data-state="ok" role="status" aria-live="polite">Đang kết nối…</div>
           <div class="user-pill" id="clockPill">17:12:51 03/09/2026</div>
           <div class="user-pill" id="currentUserPill">---</div>
           <button class="secondary" onclick="logout()">Đăng xuất</button>
@@ -1178,7 +1234,7 @@
             <p id="myShiftDescription">Chụp check-in để bắt đầu live, sau đó kết thúc ca để hệ thống chốt thời gian thực tế.</p>
           </div>
         </div>
-        <div id="myShiftGrid" class="grid live-grid"></div>
+        <div id="myShiftGrid" class="my-shift-board"></div>
       </section>
 
       <section id="view-register" class="view">
@@ -1328,6 +1384,19 @@
           </div>
         </div>
         <div id="historyWrap"></div>
+      </section>
+
+      <section id="view-backup" class="view">
+        <div class="section-head">
+          <div>
+            <h2>Sao lưu &amp; khôi phục</h2>
+            <p>Xem lại bản cũ của từng ca live trước mỗi lần sửa/xóa, khôi phục khi cần và tải bản sao lưu toàn bộ về máy.</p>
+          </div>
+          <div class="toolbar">
+            <button onclick="v39DownloadBackup()">Tải bản sao lưu (.json)</button>
+          </div>
+        </div>
+        <div id="backupWrap"></div>
       </section>
       </main>
     </div>
@@ -1737,6 +1806,14 @@
     let cloudReconnectTimer = null;
     let lastCloudSaveError = "";
     let lastStorageToastAt = 0;
+    let localSnapshotSaved = true;
+    let deferredCloudSnapshots = [];
+    function readLocalSnapshot(raw=localStorage.getItem(DB_KEY)){
+      if(!raw) return null;
+      const data=JSON.parse(raw), state=data.__goobySync;
+      delete data.__goobySync;
+      return {data,base:state?.base || null,dirty:state?.dirty === true};
+    }
     const MAX_CLOUD_DOCUMENT_BYTES = 900000;
     const MAIN_LOG_RETENTION = 350;
     const MAIN_HISTORY_RETENTION = 500;
@@ -1828,6 +1905,8 @@
         if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         cloudDB = firebase.firestore();
         cloudStorage = firebase.storage();
+        cloudStorage.setMaxUploadRetryTime(20000);
+        cloudStorage.setMaxOperationRetryTime(20000);
         cloudDocRef = cloudDB.collection(CLOUD_COLLECTION).doc(CLOUD_DOC_ID);
         cloudReady = true;
         return true;
@@ -2018,12 +2097,13 @@
       if(!raw){
         await seedDB();
       }else{
-        try{ db = JSON.parse(raw); }
+        try{ db = readLocalSnapshot(raw).data; }
         catch(e){ await seedDB(); }
       }
       applyDbDefaults();
-      lastSyncedDb = null;
-      localDirty = true;
+      const cached=raw ? readLocalSnapshot(raw) : null;
+      lastSyncedDb = cached?.base || (cached && !cached.dirty ? cloneData(db) : null);
+      localDirty = cached ? cached.dirty : true;
     }
 
     function cloudStatusText(){
@@ -2035,9 +2115,11 @@
     function persistLocalSnapshot(){
       if(!db) return true;
       try{
-        localStorage.setItem(DB_KEY, JSON.stringify(db));
+        localStorage.setItem(DB_KEY, JSON.stringify({...db,__goobySync:{dirty:localDirty,base:localDirty ? lastSyncedDb : null}}));
+        localSnapshotSaved = true;
         return true;
       }catch(e){
+        localSnapshotSaved = false;
         console.error("Không lưu được LocalStorage", e);
         warnStorage("Bộ nhớ trình duyệt đã đầy. Dữ liệu vẫn được giữ trên màn hình và sẽ thử lưu lên cloud.");
         return false;
@@ -2088,7 +2170,7 @@
         return await snapshot.ref.getDownloadURL();
       }catch(e){
         console.error("Không upload được ảnh check-in lên Storage", e);
-        warnStorage("Firebase Storage đang từ chối upload; ảnh check-in được lưu bằng bản nén dự phòng.");
+        warnStorage(`Chưa tải được ảnh check-in (${e?.code || "lỗi mạng"}); đang giữ bản nén để thử lại.`);
         return dataUrl;
       }
     }
@@ -2108,7 +2190,7 @@
         return await snapshot.ref.getDownloadURL();
       }catch(e){
         console.error("Không upload được ảnh checkout lên Storage", e);
-        warnStorage("Firebase Storage đang từ chối upload; ảnh checkout được lưu bằng bản nén dự phòng.");
+        warnStorage(`Chưa tải được ảnh checkout (${e?.code || "lỗi mạng"}); đang giữ bản nén để thử lại.`);
         return dataUrl;
       }
     }
@@ -2166,7 +2248,7 @@
           }else{
             const raw = localStorage.getItem(DB_KEY);
             if(raw){
-              try{ db = JSON.parse(raw); }
+              try{ db = readLocalSnapshot(raw).data; }
               catch(e){ await seedDB(); }
             }else{
               await seedDB();
@@ -2192,10 +2274,12 @@
 
     function scheduleCloudRetry(delay=5000){
       if(cloudRetryTimer || !cloudReady || !localDirty) return;
+      // Lùi dần và lệch ngẫu nhiên để hàng trăm máy không cùng thử lại một thời điểm.
+      const backoff = delay <= 250 ? 250 : Math.min(60000, delay * Math.pow(2, Math.min(v39SaveFailures, 4)));
       cloudRetryTimer = setTimeout(()=>{
         cloudRetryTimer = null;
         saveDB({immediate:true,retry:true});
-      },Math.max(250,delay));
+      },Math.max(250,backoff * (0.7 + Math.random() * 0.6)));
     }
 
     function scheduleCloudReconnect(delay=12000){
@@ -2274,30 +2358,25 @@
       applyDbDefaults();
       localDirty = true;
       persistLocalSnapshot();
-      if(!cloudReady || !cloudDocRef){ scheduleCloudReconnect(); return Promise.resolve({ok:true,localOnly:true}); }
+      if(!cloudReady || !cloudDocRef){ scheduleCloudReconnect(); return Promise.resolve({ok:localSnapshotSaved,localOnly:true,localSaved:localSnapshotSaved}); }
       if(syncingFromCloud) return Promise.resolve({ok:true,queued:true});
       if(saveTimer){ clearTimeout(saveTimer); saveTimer = null; }
+      const enqueue=()=>{
+        const resolvers=pendingSaveResolvers.splice(0);
+        cloudSaveQueue=cloudSaveQueue.catch(()=>({ok:false})).then(()=>flushCloudSave());
+        cloudSaveQueue.then(result=>resolvers.forEach(done=>done(result)));
+        return cloudSaveQueue;
+      };
       if(!options.immediate){
         return new Promise(resolve=>{
           pendingSaveResolvers.push(resolve);
           saveTimer = setTimeout(()=>{
             saveTimer = null;
-            cloudSaveQueue = cloudSaveQueue.then(()=>flushCloudSave());
-            cloudSaveQueue.then(result=>{
-              const resolvers = pendingSaveResolvers.splice(0);
-              resolvers.forEach(done=>done(result));
-            });
+            enqueue();
           },280);
         });
       }
-      cloudSaveQueue = cloudSaveQueue.then(()=>flushCloudSave());
-      if(pendingSaveResolvers.length){
-        cloudSaveQueue.then(result=>{
-          const resolvers = pendingSaveResolvers.splice(0);
-          resolvers.forEach(done=>done(result));
-        });
-      }
-      return cloudSaveQueue;
+      return enqueue();
     }
 
     function toast(msg){
@@ -2417,6 +2496,7 @@
       if(targetDb.dataLogs.length > 1500){
         targetDb.dataLogs = targetDb.dataLogs.sort((a,b)=>Number(a.ts||0)-Number(b.ts||0)).slice(-1500);
       }
+      pushCloudActivityLog(log);
       return log;
     }
 
@@ -2621,7 +2701,7 @@
     function renderTabs(){
       const pendingCount = pendingReportEditRequests().length + visibleLateReportRequests("pending").length;
       const tabs = isAdmin()
-        ? [["dashboard","Tổng quan"],["register","Đăng ký ca live"],["accounts","Tài khoản"],["kpi","KPI Campaign"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["shopee","Kết nối Shopee"],["approvals",`Duyệt báo cáo${pendingCount ? " ("+pendingCount+")" : ""}`],["history","Lịch sử chỉnh sửa"]]
+        ? [["dashboard","Tổng quan"],["register","Đăng ký ca live"],["accounts","Tài khoản"],["kpi","KPI Campaign"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["shopee","Kết nối Shopee"],["approvals",`Duyệt báo cáo${pendingCount ? " ("+pendingCount+")" : ""}`],["history","Lịch sử chỉnh sửa"],["backup","Sao lưu & khôi phục"]]
         : (isLeadLive()
           ? [["dashboard","Tổng quan shop"],["register","Lịch live & tham gia"],["accounts","Tài khoản"],["kpi","KPI Campaign"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["approvals",`Duyệt báo cáo${pendingCount ? " ("+pendingCount+")" : ""}`],["history","Lịch sử chỉnh sửa"]]
           : [["myshift","Ca live của tôi"],["register","Lịch live theo shop"],["notes","Ghi chú phát sinh"],["reports","Báo cáo sau live"],["history","Lịch sử chỉnh sửa"]]);
@@ -2633,6 +2713,7 @@
 
     function switchView(view){
       if(view === "shopee" && !isAdmin()) return toast("Chỉ Admin được theo dõi hệ thống kết nối");
+      if(view === "backup" && !isAdmin()) return toast("Chỉ Admin được sao lưu và khôi phục dữ liệu");
       if(["dashboard","accounts","kpi","approvals"].includes(view) && isEmployee()) return toast("Bạn không có quyền mở mục này");
       activeView = view;
       renderTabs();
@@ -2642,21 +2723,24 @@
       renderContent();
     }
 
+    // Chỉ vẽ màn hình đang mở; màn hình khác được vẽ khi chuyển tab (switchView).
+    const VIEW_RENDERERS = {
+      dashboard:()=>renderDashboard(),
+      myshift:()=>renderMyShift(),
+      register:()=>renderRegisterTable(),
+      accounts:()=>renderAccountTable(),
+      kpi:()=>renderCampaignKpi(),
+      notes:()=>renderNotes(),
+      reports:()=>{ renderReports(); renderShopeeAutoSyncPanel(); },
+      shopee:()=>{ renderShopeeAutoSyncPanel(); renderShopeeConnectPanel(); renderShopeeDiagnosticsPanel(); },
+      approvals:()=>renderReportApprovals(),
+      history:()=>renderHistory(),
+      backup:()=>renderBackup()
+    };
     function renderContent(){
       renderChannelToolbar();
-      renderDashboard();
-      renderMyShift();
-      renderRegisterTable();
-      renderAccountTable();
-      renderCampaignKpi();
       renderNoteOptions();
-      renderNotes();
-      renderReports();
-      renderShopeeAutoSyncPanel();
-      renderShopeeConnectPanel();
-      renderShopeeDiagnosticsPanel();
-      renderReportApprovals();
-      renderHistory();
+      (VIEW_RENDERERS[activeView] || (()=>{}))();
     }
 
 
@@ -2723,6 +2807,7 @@
               <div class="hero-eyebrow">TỔNG QUAN VẬN HÀNH</div>
               <h2>Theo dõi ca live theo từng kênh bán</h2>
               <p>Đang theo dõi <b>${total}</b> ca live · <b>${active}</b> ca đang hoạt động · <b>${reported}</b> ca đã báo cáo.</p>
+              ${shiftWindowNotice()}
               <div class="hero-toolbar">
                 ${channelSelect}
                 ${isAdmin()?`<button class="secondary" onclick="openChannelModal()">+ Thêm kênh bán</button>`:""}
@@ -2736,6 +2821,7 @@
             <div>
               <div class="hero-eyebrow">KÊNH BÁN ĐANG XEM</div>
               <p><b>${total}</b> ca live · <b>${active}</b> đang hoạt động · <b>${reported}</b> đã báo cáo</p>
+              ${shiftWindowNotice()}
             </div>
             <div class="toolbar">
               ${channelSelect}
@@ -3053,20 +3139,98 @@
       document.getElementById("liveGrid").innerHTML = shifts.length ? shifts.map(renderShiftCard).join("") : `<div class="empty">Chưa có ca live nào theo kênh bán đang chọn.</div>`;
     }
 
+    // Nhóm ca của nhân viên theo việc cần làm, theo thứ tự ưu tiên hiển thị.
+    const MY_SHIFT_GROUPS = [
+      {key:"live",label:"Đang live",hint:"Nhớ bấm kết thúc khi xuống live"},
+      {key:"today",label:"Hôm nay cần check-in",hint:"Chụp ảnh check-in khi bắt đầu live"},
+      {key:"report",label:"Chờ nhập báo cáo",hint:"Nhập báo cáo trong 10 giờ sau khi kết thúc"},
+      {key:"open",label:"Ca đang cần trợ live",hint:"Bấm tham gia nếu bạn rảnh"},
+      {key:"upcoming",label:"Sắp tới",hint:""},
+      {key:"missed",label:"Đã qua nhưng chưa check-in",hint:"Báo Lead Live nếu ca này cần xử lý"},
+      {key:"done",label:"Đã báo cáo",hint:"20 ca gần nhất"}
+    ];
+    const myShiftOpenGroups = new Set(["live","today","report","open"]);
+    function toggleMyShiftGroup(key,open){ open ? myShiftOpenGroups.add(key) : myShiftOpenGroups.delete(key); }
+    function shiftDayOffset(shift){
+      const day = Date.parse(`${shift.date}T00:00:00+07:00`), today = Date.parse(`${todayISO()}T00:00:00+07:00`);
+      return Number.isFinite(day) ? Math.round((day - today) / 86400000) : 0;
+    }
+    function myShiftGroup(shift){
+      if(!isParticipant(shift)) return "open";
+      const status = computeShiftStatus(shift).value;
+      if(status === "active") return "live";
+      if(status === "ended") return "report";
+      if(status === "reported") return "done";
+      const day = shiftDayOffset(shift);
+      return day === 0 ? "today" : (day > 0 ? "upcoming" : "missed");
+    }
+    function shiftStartHint(shift){
+      const range = shiftScheduledRangeMs(shift);
+      if(!range) return "";
+      const diff = range.start - Date.now();
+      const text = ms=>{ const m = Math.round(Math.abs(ms)/60000); return m >= 60 ? `${Math.floor(m/60)} giờ ${m%60} phút` : `${m} phút`; };
+      if(diff > 0) return `Bắt đầu sau ${text(diff)}`;
+      if(Date.now() < range.end) return `Đã đến giờ live ${text(diff)} · hãy check-in`;
+      return "Đã qua giờ live";
+    }
+    // Nút chính cho việc tiếp theo của nhân viên trong ca.
+    function myShiftPrimaryAction(shift){
+      const role = userRoleInShift(shift);
+      if(!role){
+        return isOpenShiftForSupport(shift) && !supportOpenShiftReason(shift)
+          ? `<button class="green" onclick="joinShiftAsSupport('${shift.id}')">+ Tham gia trợ live</button>` : "";
+      }
+      if(canCheckin(shift,role)) return `<button class="green" onclick="openCheckinModal('${shift.id}','${role}')">Check-in ${roleNameInShift(role)}</button>`;
+      if(canEndLive(shift,role)) return `<button class="red" onclick="openEndModal('${shift.id}','${role}')">Kết thúc ${roleNameInShift(role)}</button>`;
+      return reportActionButton(shift).replace(/class="small /,'class="');
+    }
     function renderMyShift(){
       if(isAdmin() || isLeadLive()) return;
       const title = document.getElementById("myShiftTitle");
       const description = document.getElementById("myShiftDescription");
-      if(isEmployee()){
-        if(title) title.textContent = "Ca của tôi & ca đang cần trợ live";
-        if(description) description.textContent = "Bạn có thể tham gia mọi ca do admin hoặc host đăng ký nếu ca chưa có trợ live và không trùng lịch với ca đã nhận.";
-      }else{
-        if(title) title.textContent = "Ca live của tôi";
-        if(description) description.textContent = "Chụp check-in để bắt đầu live, sau đó kết thúc ca để hệ thống chốt thời gian thực tế.";
-      }
+      if(title) title.textContent = "Ca live của tôi";
+      if(description) description.textContent = "Việc cần làm được xếp lên đầu. Dữ liệu tự lưu lên cloud, trạng thái lưu hiển thị ở góc trên.";
       const source = db.shifts.filter(s=>canViewShift(s) && (isParticipant(s) || (isEmployee() && isOpenShiftForSupport(s))));
-      const shifts = getChannelFilteredShifts(source).sort((a,b)=>(b.date+b.start).localeCompare(a.date+a.start));
-      document.getElementById("myShiftGrid").innerHTML = shifts.length ? shifts.map(renderShiftCard).join("") : `<div class="empty">Chưa có ca của bạn hoặc ca nào đang cần trợ live trong các shop được phân quyền.</div>`;
+      const shifts = getChannelFilteredShifts(source);
+      const grid = document.getElementById("myShiftGrid");
+      if(!shifts.length){
+        grid.innerHTML = `<div class="empty">Chưa có ca của bạn hoặc ca nào đang cần trợ live trong các shop được phân quyền.</div>`;
+        return;
+      }
+      const groups = Object.fromEntries(MY_SHIFT_GROUPS.map(g=>[g.key,[]]));
+      shifts.forEach(s=>groups[myShiftGroup(s)].push(s));
+      const asc = (a,b)=>(a.date+a.start).localeCompare(b.date+b.start);
+      Object.entries(groups).forEach(([key,list])=>list.sort(key === "done" || key === "missed" ? (a,b)=>asc(b,a) : asc));
+      groups.done = groups.done.slice(0,20);
+
+      const next = groups.live[0] || groups.report[0] || groups.today[0] || groups.open.find(s=>shiftDayOffset(s) === 0);
+      const nextGroup = next ? MY_SHIFT_GROUPS.find(g=>g.key === myShiftGroup(next)) : null;
+      const nextAction = next ? myShiftPrimaryAction(next) : "";
+      const focus = `
+        <div class="my-shift-focus card">
+          <div class="my-shift-next">
+            <div class="my-shift-eyebrow">Việc cần làm ngay</div>
+            ${next ? `
+              <div class="my-shift-next-title">${escapeHtml(nextGroup.label)} · ${escapeHtml(next.shop || "")} · ${next.start}–${next.end}</div>
+              <div class="meta">${next.date} · Host: ${escapeHtml(next.hostName || "-")} · Trợ live: ${escapeHtml(supportNameLabel(next))}
+                ${myShiftGroup(next) === "today" ? `<br><b>${shiftStartHint(next)}</b>` : ""}
+                ${myShiftGroup(next) === "report" && shiftFinishedTs(next) ? `<br>Hạn nhập báo cáo: <b>${employeeReportDeadlineText(next)}</b>` : ""}</div>
+              ${nextAction ? `<div class="my-shift-next-action">${nextAction}</div>` : ""}
+            ` : `<div class="my-shift-next-title">Bạn không có việc gấp hôm nay</div><div class="meta">Ca sắp tới và ca cần trợ live nằm ở bên dưới.</div>`}
+          </div>
+          <div class="my-shift-counts">
+            ${MY_SHIFT_GROUPS.filter(g=>g.key !== "done").map(g=>`
+              <div class="my-shift-count ${groups[g.key].length ? "has-items" : ""}" data-group="${g.key}">
+                <span class="count">${groups[g.key].length}</span><span>${g.label}</span>
+              </div>`).join("")}
+          </div>
+        </div>`;
+      const sections = MY_SHIFT_GROUPS.filter(g=>groups[g.key].length).map(g=>`
+        <details class="my-shift-group" data-group="${g.key}" ${myShiftOpenGroups.has(g.key) ? "open" : ""} ontoggle="toggleMyShiftGroup('${g.key}',this.open)">
+          <summary><span class="my-shift-group-title">${g.label}</span><span class="badge gray">${groups[g.key].length}</span>${g.hint ? `<span class="meta">${g.hint}</span>` : ""}</summary>
+          <div class="grid live-grid">${groups[g.key].map(renderShiftCard).join("")}</div>
+        </details>`).join("");
+      grid.innerHTML = focus + sections;
     }
 
     function renderShiftCard(shift){
@@ -3111,8 +3275,21 @@
         roleActions.push(`<button class="small red" onclick="openEndModal('${shift.id}','support')">Kết thúc trợ live</button>`);
       }
 
+      // Nhân viên: nút thao tác đặt ngay dưới tiêu đề, ẩn các ô chỉ số khi ca chưa bắt đầu.
+      const compact = isEmployee();
+      const actionsHtml = `
+          <div class="actions">
+            ${roleActions.join("")}
+            ${(canManageShift(shift) || isParticipant(shift)) ? `<button class="small purple" onclick="openLiveUrlModal('${shift.id}')">${shift.shopeeLiveId ? "Sửa link live" : "Nhập link live"}</button>` : ""}
+            ${(canManageShift(shift) || isParticipant(shift)) ? `<button class="small secondary" onclick="prepareQuickNote('${shift.id}')">Ghi chú phát sinh</button>` : ""}
+            ${(canManageShift(shift) || isParticipant(shift)) ? reportActionButton(shift) : ""}
+            ${canManageShift(shift) ? `<button class="small" onclick="editShift('${shift.id}')">Sửa ca</button><button class="small red" onclick="deleteShift('${shift.id}')">Xóa</button>` : ""}
+          </div>`;
+      const showMetrics = !compact || st.value !== "scheduled";
+      const showDetailMetrics = !compact || st.value === "reported";
+
       return `
-        <div class="card live-card ${st.card} ${campaign.className}">
+        <div class="card live-card ${st.card} ${campaign.className} ${compact ? "compact-card" : ""}">
           <div class="person-row">
             <div class="person-info">
               <div class="avatar">${shift.hostName.slice(0,1).toUpperCase()}</div>
@@ -3125,8 +3302,10 @@
             </div>
             <div class="toolbar">${campaignBadgeHtml(shift)}<span class="badge ${st.color}">${st.label}</span></div>
           </div>
+          ${compact ? actionsHtml : ""}
+          ${compact && !showMetrics ? `<div class="compact-schedule">${escapeHtml(shiftStartHint(shift))}</div>` : ""}
 
-          <div class="metrics">
+          ${showMetrics ? `<div class="metrics">
             <div class="metric">
               <div class="metric-label">Host live thực tế</div>
               <div class="metric-value timer">${showHostEnd}</div>
@@ -3143,9 +3322,9 @@
               <div class="metric-label">Đơn hàng</div>
               <div class="metric-value">${Number(report.orders || 0).toLocaleString("vi-VN")}</div>
             </div>
-          </div>
+          </div>` : ""}
 
-          <div class="metrics">
+          ${showDetailMetrics ? `<div class="metrics">
             <div class="metric">
               <div class="metric-label">View</div>
               <div class="metric-value">${Number(report.view || 0).toLocaleString("vi-VN")}</div>
@@ -3162,7 +3341,7 @@
               <div class="metric-label">AOV</div>
               <div class="metric-value">${money(aov || 0)}</div>
             </div>
-          </div>
+          </div>` : ""}
 
           <div class="alert-box ${alertColor}">${alertText}${pendingReq ? `<br/><b>Đang có yêu cầu sửa báo cáo chờ Admin/Lead Live duyệt.</b>` : ""}</div>
 
@@ -3173,14 +3352,7 @@
             ${(isAdmin() || isLeadLive()) && shift.reportCheckoutPhoto ? ` · <a href="#" onclick="openReportCheckoutPhoto('${shift.id}');return false;">Xem ảnh</a>` : ""}
             ${shiftFinishedTs(shift) && !shift.report ? `<br/>Hạn nhân viên nhập báo cáo: <b>${employeeReportDeadlineText(shift)}</b>` : ""}
           </div>
-
-          <div class="actions">
-            ${roleActions.join("")}
-            ${(canManageShift(shift) || isParticipant(shift)) ? `<button class="small purple" onclick="openLiveUrlModal('${shift.id}')">${shift.shopeeLiveId ? "Sửa link live" : "Nhập link live"}</button>` : ""}
-            ${(canManageShift(shift) || isParticipant(shift)) ? `<button class="small secondary" onclick="prepareQuickNote('${shift.id}')">Ghi chú phát sinh</button>` : ""}
-            ${(canManageShift(shift) || isParticipant(shift)) ? reportActionButton(shift) : ""}
-            ${canManageShift(shift) ? `<button class="small" onclick="editShift('${shift.id}')">Sửa ca</button><button class="small red" onclick="deleteShift('${shift.id}')">Xóa</button>` : ""}
-          </div>
+          ${compact ? "" : actionsHtml}
         </div>
       `;
     }
@@ -4033,9 +4205,13 @@
     }
     function renderNoteOptions(){
       const shifts = visibleShifts();
-      document.getElementById("noteShiftSelect").innerHTML = shifts.map(s=>`
+      const select = document.getElementById("noteShiftSelect");
+      const selected = select.value;
+      select.innerHTML = shifts.map(s=>`
         <option value="${s.id}">${s.date} · ${s.shop || "Khác"} · ${s.start}-${s.end} · Host: ${s.hostName} · Trợ: ${supportNameLabel(s)}</option>
       `).join("") || `<option value="">Chưa có ca live</option>`;
+      // Giữ ca đang chọn khi dữ liệu realtime làm mới danh sách.
+      if(selected && shifts.some(s=>s.id === selected)) select.value = selected;
     }
     function renderNotes(){
       const ids = new Set(visibleShifts().map(s=>s.id));
@@ -4632,7 +4808,7 @@
     async function confirmCheckin(){
       const shiftId = document.getElementById("checkinShiftId").value;
       const role = document.getElementById("checkinRole").value;
-      const s = db.shifts.find(x=>x.id===shiftId);
+      let s = db.shifts.find(x=>x.id===shiftId);
       if(!s) return toast("Không tìm thấy ca live");
       if(!canManageShift(s) && userRoleInShift(s)!==role) return toast("Bạn không có quyền check-in vị trí này");
       if(!canCheckin(s,role)) return toast("Vị trí này đã check-in hoặc không còn hợp lệ");
@@ -4645,6 +4821,9 @@
       try{
         toast(cloudReady ? "Đang tải ảnh check-in lên cloud..." : "Đang lưu check-in...");
         const photoUrl = await uploadCheckinPhotoToCloud(shiftId, role, capturedPhoto);
+        s = db.shifts.find(x=>x.id===shiftId);
+        if(!s) throw new Error("Ca live đã bị xóa trên thiết bị khác");
+        if(!canManageShift(s) && userRoleInShift(s)!==role) throw new Error("Quyền check-in đã thay đổi");
         if(!canCheckin(s,role)) throw new Error("Vị trí này vừa được check-in trên thiết bị khác");
         const item = s[role];
         item.checkinTs = nowTs();
@@ -4675,7 +4854,7 @@
         closeCheckinModal();
         renderContent();
         const fallbackText = item.photoStorageMode === "compressed_fallback" ? "Đã check-in; ảnh đang lưu bằng bản nén dự phòng" : "Đã bắt đầu live và tính giờ theo thời gian thực";
-        toast(result.ok || result.localOnly ? fallbackText : "Đã lưu trên máy; cloud đang tự đồng bộ lại");
+        toast(result.ok && !result.localOnly ? fallbackText : (localSnapshotSaved ? "Đã lưu trên máy; đang chờ đồng bộ cloud" : "Chưa lưu được dữ liệu. Vui lòng giữ trang mở và thử lại"));
       }catch(e){
         console.error("Không check-in được",e);
         toast(e?.message || "Không check-in được");
@@ -4810,7 +4989,7 @@
 
     async function confirmReportCheckout(){
       const shiftId = document.getElementById("reportCheckoutShiftId").value;
-      const s = db.shifts.find(x=>x.id===shiftId);
+      let s = db.shifts.find(x=>x.id===shiftId);
       if(!s || !canReport(s)) return toast("Ca live không còn hợp lệ");
       if(!canEmployeeEnterInitialReport(s)) return toast("Quyền mở báo cáo chưa được Lead Live duyệt");
       if(!capturedCheckoutPhoto) return toast("Bạn cần chụp ảnh checkout trước");
@@ -4819,6 +4998,9 @@
       try{
         toast(cloudReady ? "Đang tải ảnh checkout lên cloud..." : "Đang lưu ảnh checkout...");
         const photoUrl = await uploadCheckoutPhotoToCloud(shiftId, "report", capturedCheckoutPhoto);
+        s = db.shifts.find(x=>x.id===shiftId);
+        if(!s) throw new Error("Ca live đã bị xóa trên thiết bị khác");
+        if(!canReport(s) || !canEmployeeEnterInitialReport(s)) throw new Error("Quyền báo cáo đã thay đổi");
         if(s.reportCheckoutPhoto) throw new Error("Ảnh checkout đã được ghi nhận trước đó");
         s.reportCheckoutPhoto = photoUrl;
         s.reportCheckoutPhotoStorageMode = /^data:/i.test(photoUrl) ? "compressed_fallback" : "firebase_storage";
@@ -4827,7 +5009,8 @@
         s.reportCheckoutById = currentUser.id;
         s.reportCheckoutByName = currentUser.name;
         recordDatabaseEvent({module:"report_checkout",action:"Chụp checkout trước khi nhập báo cáo",shift:s,after:{reportCheckoutTime:s.reportCheckoutTime,reportCheckoutByName:s.reportCheckoutByName,photoSaved:!!s.reportCheckoutPhoto},details:{hasPhoto:!!s.reportCheckoutPhoto},employeeInput:isEmployee()});
-        await saveDB({immediate:true});
+        const result = await saveDB({immediate:true});
+        if(!result.ok) throw new Error("Ảnh chưa được đồng bộ. Vui lòng giữ trang mở để thử lưu lại.");
         closeReportCheckoutModal();
         renderContent();
         if(s.reportCheckoutPhotoStorageMode === "compressed_fallback") toast("Đã lưu ảnh checkout bằng bản nén dự phòng");
@@ -5760,17 +5943,28 @@
 
     setInterval(()=>{
       document.getElementById("clockPill").textContent = clockText();
-      if(currentUser){
-        renderDashboard();
-        renderMyShift();
-        renderRegisterTable();
-        renderReports();
-        renderReportApprovals();
-      }
+      v39UpdateSyncPill();
+      if(!currentUser) return;
+      // Chỉ cập nhật đồng hồ của màn hình đang mở, và không vẽ lại khi người dùng đang nhập liệu.
+      const view = document.getElementById("view-"+activeView);
+      const focused = document.activeElement;
+      if(view && focused && view.contains(focused) && /^(INPUT|SELECT|TEXTAREA)$/.test(focused.tagName)) return;
+      if(activeView === "dashboard") renderDashboard();
+      else if(activeView === "myshift") renderMyShift();
+      else if(activeView === "register") renderRegisterTable();
+      else if(activeView === "reports") renderReports();
+      else if(activeView === "approvals") renderReportApprovals();
     },1000);
 
     window.addEventListener("storage", e=>{
-      if(e.key===DB_KEY) loadDB().then(renderApp);
+      if(e.key!==DB_KEY || !e.newValue || cloudReady) return;
+      try{
+        const incoming=readLocalSnapshot(e.newValue);
+        const previous=e.oldValue ? readLocalSnapshot(e.oldValue).data : lastSyncedDb;
+        db=previous ? threeWayMerge(previous,db,incoming.data) : mergeOfflineDb(db,incoming.data);
+        localDirty=localDirty || incoming.dirty;
+        applyDbDefaults(); renderApp();
+      }catch(err){console.error("Không đọc được thay đổi từ tab khác",err);}
     });
 
 
@@ -5887,7 +6081,8 @@
       target.shifts=dedupeEntities(target.shifts || []);
       target.notes=v38BoundRowsByShift(target.notes || [],"notes",300);
       target.histories=v38BoundRowsByShift(target.histories || [],"histories",300);
-      target.dataLogs=dedupeEntities(target.dataLogs || []).sort((a,b)=>Number(a?.ts||0)-Number(b?.ts||0)).slice(-MAIN_LOG_RETENTION);
+      v39RememberLogs(target.dataLogs);
+      target.dataLogs=v39RecentLogs();
       target.reportEditRequests=v38BoundRowsByShift(target.reportEditRequests || [],"reportEditRequests",REVIEWED_REQUEST_RETENTION);
       target.lateReportRequests=v38BoundRowsByShift(target.lateReportRequests || [],"lateReportRequests",REVIEWED_REQUEST_RETENTION);
       target.channels=[...new Map((target.channels || []).map(x=>[String(x||"").trim().toLowerCase(),String(x||"").trim()])).values()].filter(Boolean);
@@ -5925,6 +6120,8 @@
     }
     function v38MainData(source){
       const out = v38Clone(source || {});
+      // V39: nhật ký nằm trong activityLogs, không làm thay đổi document chính ở mỗi thao tác.
+      if(v39LogsInSubcollection) delete out.dataLogs;
       out.shifts = [];
       out.notes = (out.notes || []).filter(x=>!x?.shiftId);
       out.histories = (out.histories || []).filter(x=>!x?.shiftId);
@@ -5970,19 +6167,44 @@
         targetDb[key] = (targetDb[key] || []).filter(x=>String(x?.shiftId || "") !== shiftId);
       }
     }
-    async function v38ReadAllEnvelopes(){
-      const snap = await cloudDB.collection(V38_SHIFT_COLLECTION).get();
-      return snap.docs.map(doc=>{
-        const data = doc.data() || {};
-        if(data.shift) return {
-          shift:v38Clone(data.shift),
-          notes:v38Clone(data.notes || []),
-          histories:v38Clone(data.histories || []),
-          reportEditRequests:v38Clone(data.reportEditRequests || []),
-          lateReportRequests:v38Clone(data.lateReportRequests || [])
-        };
-        return data.id ? {shift:v38Clone(data),notes:[],histories:[],reportEditRequests:[],lateReportRequests:[]} : null;
-      }).filter(Boolean);
+    function v38EnvelopeFromDoc(doc){
+      const data = doc.data() || {};
+      if(data.shift) return {
+        shift:v38Clone(data.shift),
+        notes:v38Clone(data.notes || []),
+        histories:v38Clone(data.histories || []),
+        reportEditRequests:v38Clone(data.reportEditRequests || []),
+        lateReportRequests:v38Clone(data.lateReportRequests || [])
+      };
+      return data.id ? {shift:v38Clone(data),notes:[],histories:[],reportEditRequests:[],lateReportRequests:[]} : null;
+    }
+    // V39: chỉ đọc các ca trong khoảng ngày đang tải (mặc định tháng này + tháng trước).
+    async function v38ReadEnvelopes(){
+      const snap = await v39ShiftQuery().get({source:"server"});
+      return snap.docs.map(v38EnvelopeFromDoc).filter(Boolean);
+    }
+    // Đọc riêng những ca nằm ngoài khoảng đang tải nhưng còn thay đổi chưa lưu trên máy,
+    // để lượt lưu tiếp theo gộp với bản trên server thay vì ghi đè.
+    async function v39ReadPendingOutsideWindow(cached,loadedEnvelopes){
+      if(!cached?.dirty || !v39ShiftWindowFrom) return [];
+      const loaded = new Set(loadedEnvelopes.map(env=>String(env.shift.id)));
+      const local = cached.data || {}, base = cached.base || {};
+      const ids = new Set();
+      for(const shift of local.shifts || []){
+        if(loaded.has(String(shift.id))) continue;
+        const baseShift = (base.shifts || []).find(s=>String(s.id) === String(shift.id));
+        if(!baseShift || !deepEqual(v38ShiftEnvelope(local,shift),v38ShiftEnvelope(base,baseShift))) ids.add(String(shift.id));
+      }
+      for(const shift of base.shifts || []){
+        if(!loaded.has(String(shift.id)) && !(local.shifts || []).some(s=>String(s.id) === String(shift.id))) ids.add(String(shift.id));
+      }
+      const envelopes = [];
+      for(const shiftId of ids){
+        const snap = await v38ShiftRef(shiftId).get({source:"server"});
+        const env = snap.exists ? v38EnvelopeFromDoc(snap) : null;
+        if(env) envelopes.push(env);
+      }
+      return envelopes;
     }
     async function v38CollectionHasData(){
       const snap = await cloudDB.collection(V38_SHIFT_COLLECTION).limit(1).get();
@@ -5998,21 +6220,23 @@
         // Idempotent/resumable migration: preserve already-created shard docs and write
         // only missing ones. The legacy main document is cleared only after every
         // legacy shift has a shard, so an interrupted migration cannot lose data.
-        const existingSnap=await cloudDB.collection(V38_SHIFT_COLLECTION).get();
+        const existingSnap=await cloudDB.collection(V38_SHIFT_COLLECTION).get({source:"server"});
         const existingIds=new Set(existingSnap.docs.map(doc=>String(doc.id)));
         const missing=legacyShifts.filter(shift=>shift?.id && !existingIds.has(String(shift.id)));
         for(let offset=0; offset<missing.length; offset+=V38_SHIFT_WRITE_BATCH){
-          const batch = cloudDB.batch();
           for(const shift of missing.slice(offset,offset+V38_SHIFT_WRITE_BATCH)){
             const envelope = v38ShiftEnvelope(legacy,shift);
             const meta=v38EnvelopeMetadata(envelope);
             const bytes=v38JsonBytes({...meta,updatedAt:null});
             if(bytes>V38_MAX_SHIFT_BYTES) throw new Error(`Ca ${shift.id} quá lớn (${Math.round(bytes/1024)}KB); chưa xóa dữ liệu legacy để tránh mất dữ liệu.`);
-            batch.set(v38ShiftRef(shift.id),meta,{merge:true});
+            await cloudDB.runTransaction(async transaction=>{
+              const ref=v38ShiftRef(shift.id);
+              const current=await transaction.get(ref);
+              if(!current.exists) transaction.set(ref,meta);
+            });
           }
-          await batch.commit();
         }
-        const verifySnap=await cloudDB.collection(V38_SHIFT_COLLECTION).get();
+        const verifySnap=await cloudDB.collection(V38_SHIFT_COLLECTION).get({source:"server"});
         const verifiedIds=new Set(verifySnap.docs.map(doc=>String(doc.id)));
         const notMigrated=legacyShifts.filter(shift=>shift?.id && !verifiedIds.has(String(shift.id)));
         if(notMigrated.length) throw new Error(`Migration V38 chưa đủ ${notMigrated.length} ca; giữ nguyên dữ liệu legacy để thử lại.`);
@@ -6022,6 +6246,9 @@
           const current = snap.exists && snap.data()?.data ? v38Clone(snap.data().data) : legacy;
           // If another client already completed migration, do not reintroduce old rows.
           if(!Array.isArray(current.shifts) || !current.shifts.length) return;
+          for(const key of ["shifts","notes","histories","reportEditRequests","lateReportRequests"]){
+            if(!deepEqual(current[key],legacy[key])) throw new Error("Dữ liệu cũ vừa thay đổi. Giữ nguyên để kiểm tra trước khi chuyển đổi lại.");
+          }
           const nextMain = v38MainData(current);
           transaction.set(cloudDocRef,{
             data:nextMain,
@@ -6040,26 +6267,33 @@
     
     // ---------- V38 override: load ----------
     async function loadDB(){
+      const cached=readLocalSnapshot();
       initCloudDB();
       if(cloudReady){
         try{
-          let snap = await cloudDocRef.get();
+          let snap = await cloudDocRef.get({source:"server"});
           if(snap.exists && snap.data()?.data){
             const payload = snap.data() || {};
             if(Array.isArray(payload.data.shifts) && payload.data.shifts.length){
               await v38MigrateLegacy(payload);
-              snap = await cloudDocRef.get();
+              snap = await cloudDocRef.get({source:"server"});
             }
             const mainData = snap.exists && snap.data()?.data ? v38Clone(snap.data().data) : {};
-            const envelopes = await v38ReadAllEnvelopes();
+            const envelopes = await v38ReadEnvelopes();
+            envelopes.push(...await v39ReadPendingOutsideWindow(cached,envelopes));
             db = envelopes.length ? v38Hydrate(mainData,envelopes) : v38Clone(mainData);
             applyDbDefaults();
             lastSyncedDb = v38Clone(db);
             localDirty = false;
+            if(cached?.dirty){
+              db=cached.base ? threeWayMerge(cached.base,cached.data,db) : mergeOfflineDb(cached.data,db);
+              localDirty=!deepEqual(db,lastSyncedDb);
+              applyDbDefaults();
+            }
             persistLocalSnapshot();
           }else{
             const raw = localStorage.getItem(DB_KEY);
-            if(raw){ try{db=JSON.parse(raw);}catch(e){await seedDB();} } else await seedDB();
+            if(raw){ try{db=readLocalSnapshot(raw).data;}catch(e){await seedDB();} } else await seedDB();
             applyDbDefaults();
             await saveDB({immediate:true});
           }
@@ -6069,11 +6303,11 @@
           await loadLocalDB();
           scheduleCloudReconnect();
         }
-      }else await loadLocalDB();
+      }else { await loadLocalDB(); scheduleCloudReconnect(); }
       applyDbDefaults();
       const userId=sessionStorage.getItem(SESSION_KEY);
       currentUser=db.accounts.find(a=>a.id===userId)||null;
-      if(cloudReady) startCloudRealtimeSync();
+      if(cloudReady){ startCloudRealtimeSync(); if(localDirty) scheduleCloudRetry(250); }
     }
     
     // ---------- V38 override: reconnect ----------
@@ -6083,19 +6317,24 @@
         cloudReconnectTimer=null;
         if(!initCloudDB()){scheduleCloudReconnect(30000);return;}
         try{
-          const snap=await cloudDocRef.get();
+          const snap=await cloudDocRef.get({source:"server"});
           const main=snap.exists&&snap.data()?.data?v38Clone(snap.data().data):{};
-          const envs=await v38ReadAllEnvelopes();
+          const envs=await v38ReadEnvelopes();
+          // Ca cũ đã mở thêm ngoài khoảng ngày vẫn giữ bản đã đồng bộ trước đó.
+          const loadedIds=new Set(envs.map(env=>String(env.shift.id)));
+          for(const shift of lastSyncedDb?.shifts||[]){
+            if(!loadedIds.has(String(shift.id))&&!v39InShiftWindow(shift)) envs.push(v38ShiftEnvelope(lastSyncedDb,shift));
+          }
           const remote=v38Hydrate(main,envs);
-          db=mergeOfflineDb(db,remote);
+          db=lastSyncedDb ? threeWayMerge(lastSyncedDb,db,remote) : (localDirty ? mergeOfflineDb(db,remote) : remote);
           lastSyncedDb=remote;
           localDirty=true;
           applyDbDefaults();
           persistLocalSnapshot();
           startCloudRealtimeSync();
-          await saveDB({immediate:true,retry:true});
+          const result=await saveDB({immediate:true,retry:true});
           renderApp();
-          toast("Đã kết nối lại và đồng bộ dữ liệu cloud V38");
+          if(result.ok) toast("Đã kết nối lại và đồng bộ dữ liệu cloud V38");
         }catch(e){
           console.error("Chưa kết nối lại được Firestore V38",e);
           cloudReady=false;
@@ -6107,9 +6346,15 @@
     async function v38SaveMain(requestedBase,requestedLocal){
       const localMain=v38MainData(requestedLocal);
       const baseMain=requestedBase?v38MainData(requestedBase):null;
-      return cloudDB.runTransaction(async transaction=>{
+      // V39: tài khoản/cấu hình không đổi thì không tranh ghi document chung với hàng trăm máy khác.
+      const comparable=main=>{const copy={...main};delete copy.schemaVersion;return copy;};
+      if(baseMain&&deepEqual(comparable(localMain),comparable(baseMain))) return localMain;
+      let previous=null;
+      const saved=await cloudDB.runTransaction(async transaction=>{
         const snap=await transaction.get(cloudDocRef);
-        const remoteMain=snap.exists&&snap.data()?.data?v38MainData(snap.data().data):null;
+        const rawRemote=snap.exists&&snap.data()?.data?snap.data().data:null;
+        previous=rawRemote?v38Clone(rawRemote):null;
+        const remoteMain=rawRemote?v38MainData(rawRemote):null;
         const next=!remoteMain||!baseMain?v38Clone(localMain):threeWayMerge(baseMain,localMain,remoteMain);
         applyOperationalBounds(next);
         const bytes=v38JsonBytes({data:next});
@@ -6122,16 +6367,18 @@
           updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
           updatedAtText:nowText(),
           updatedBy:currentUser?currentUser.name:"system"
-        },{merge:true});
+        },{mergeFields:["data","documentBytes","schemaVersion","storageMode","updatedAt","updatedAtText","updatedBy"]});
         return next;
       });
+      v39WriteRevision("main","main",previous,"update");
+      return saved;
     }
     async function v38SaveEnvelope(baseDb,localDb,shiftId){
       const localShift=(localDb.shifts||[]).find(s=>String(s.id)===String(shiftId));
       const baseShift=(baseDb?.shifts||[]).find(s=>String(s.id)===String(shiftId));
       const ref=v38ShiftRef(shiftId);
       if(!localShift && baseShift){
-        return cloudDB.runTransaction(async transaction=>{
+        const removal=await cloudDB.runTransaction(async transaction=>{
           const snap=await transaction.get(ref);
           if(!snap.exists) return {deleted:true,shiftId};
           const remote=snap.data()||{};
@@ -6139,30 +6386,82 @@
           const baseEnv=v38ShiftEnvelope(baseDb,baseShift);
           if(deepEqual(remoteEnv,baseEnv)){
             transaction.delete(ref);
-            return {deleted:true,shiftId};
+            return {deleted:true,shiftId,previous:v38Clone(remoteEnv)};
           }
           return {deleted:false,conflict:true,envelope:remoteEnv};
         });
+        // Ca bị xóa vẫn được giữ trong liveDashboardRevisions để Admin khôi phục.
+        if(removal.previous){ v39WriteRevision("shift",shiftId,removal.previous,"delete"); delete removal.previous; }
+        return removal;
       }
       if(!localShift) return {deleted:true,shiftId};
       const localEnv=v38ShiftEnvelope(localDb,localShift);
       const baseEnv=baseShift&&baseDb?v38ShiftEnvelope(baseDb,baseShift):null;
       if(baseEnv&&deepEqual(localEnv,baseEnv)) return {unchanged:true,envelope:localEnv};
-      return cloudDB.runTransaction(async transaction=>{
+      let previous=null;
+      const saved=await cloudDB.runTransaction(async transaction=>{
         const snap=await transaction.get(ref);
         const data=snap.exists?snap.data()||{}:null;
         const remoteEnv=data?.shift?{shift:v38Clone(data.shift),notes:v38Clone(data.notes||[]),histories:v38Clone(data.histories||[]),reportEditRequests:v38Clone(data.reportEditRequests||[]),lateReportRequests:v38Clone(data.lateReportRequests||[])}:null;
+        previous=remoteEnv;
         let next=!remoteEnv||!baseEnv?v38Clone(localEnv):threeWayMerge(baseEnv,localEnv,remoteEnv);
+        if(remoteEnv&&!baseEnv){
+          // Không có bản gốc để so (ca chưa từng tải trên máy này): giữ thông tin ca của máy,
+          // nhưng không làm mất ghi chú/lịch sử người khác đã thêm trên server.
+          for(const key of ["notes","histories","reportEditRequests","lateReportRequests"]) next[key]=mergeEntityArrays([],localEnv[key]||[],remoteEnv[key]||[]);
+        }
         next=v38ProtectWorkerMetrics(baseEnv,localEnv,remoteEnv,next);
         const meta=v38EnvelopeMetadata(next);
         const bytes=v38JsonBytes({...meta,updatedAt:null});
         if(bytes>V38_MAX_SHIFT_BYTES) throw new Error(`Ca ${shiftId} quá lớn (${Math.round(bytes/1024)}KB). Hệ thống giữ bản cục bộ và không ghi đè document lỗi.`);
         meta.documentBytes=bytes;
-        transaction.set(ref,meta,{merge:true});
+        transaction.set(ref,meta,{mergeFields:Object.keys(meta)});
         return {saved:true,envelope:next};
       });
+      if(previous&&!deepEqual(previous,saved.envelope)) v39WriteRevision("shift",shiftId,previous,"update");
+      return saved;
     }
     
+    // Retry embedded fallback photos without replacing a newer capture.
+    let photoRetryRunning = false;
+    let photoRetryAfter = 0;
+    async function retryPendingPhotos(){
+      if(photoRetryRunning || !cloudReady || !cloudStorage || Date.now()<photoRetryAfter) return;
+      photoRetryRunning=true;
+      photoRetryAfter=Date.now()+60000;
+      try{
+        for(const shift of [...(db?.shifts || [])]){
+          const slots=[
+            {role:"host",field:"photo",mode:"photoStorageMode",kind:"checkins"},
+            {role:"support",field:"photo",mode:"photoStorageMode",kind:"checkins"},
+            {role:"host",field:"checkoutPhoto",mode:"checkoutPhotoStorageMode",kind:"checkouts"},
+            {role:"support",field:"checkoutPhoto",mode:"checkoutPhotoStorageMode",kind:"checkouts"},
+            {role:null,field:"reportCheckoutPhoto",mode:"reportCheckoutPhotoStorageMode",kind:"checkouts"}
+          ];
+          for(const slot of slots){
+            const source=slot.role ? shift[slot.role] : shift;
+            const photo=source?.[slot.field];
+            if(typeof photo!=="string" || !photo.startsWith("data:image/")) continue;
+            // A content hash makes retries reuse the same object after a lost response.
+            const hash=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(photo))),b=>b.toString(16).padStart(2,"0")).join("");
+            const ref=cloudStorage.ref(`${slot.kind}/${shift.id}/${slot.role || "report"}_${hash}.jpg`);
+            const uploaded=await ref.putString(photo,"data_url");
+            const url=await uploaded.ref.getDownloadURL();
+            const current=db.shifts.find(s=>String(s.id)===String(shift.id));
+            const target=slot.role ? current?.[slot.role] : current;
+            if(target?.[slot.field]!==photo) continue;
+            target[slot.field]=url;
+            target[slot.mode]="firebase_storage";
+            await saveDB({immediate:true});
+          }
+        }
+      }catch(err){
+        console.error("Chưa tải lại được ảnh",err);
+        warnStorage(`Ảnh đang chờ tải lại (${err?.code || "lỗi mạng"}). Bản ảnh nén vẫn được giữ.`);
+      }finally{photoRetryRunning=false;}
+    }
+    setInterval(()=>{retryPendingPhotos();},60000);
+
     // ---------- V38 override: save ----------
     async function flushCloudSave(){
       if(!cloudReady||!cloudDB||!cloudDocRef||!db) return {ok:false,localOnly:true};
@@ -6185,10 +6484,10 @@
         const synced=v38Hydrate(mergedMain,[]);
         // Start from base/current local for unchanged docs, then replace changed docs with transaction results.
         synced.shifts=v38Clone(requestedLocal.shifts||[]);
-        synced.notes=v38Clone(requestedLocal.notes||[]);
-        synced.histories=v38Clone(requestedLocal.histories||[]);
-        synced.reportEditRequests=v38Clone(requestedLocal.reportEditRequests||[]);
-        synced.lateReportRequests=v38Clone(requestedLocal.lateReportRequests||[]);
+        synced.notes.push(...v38Clone((requestedLocal.notes||[]).filter(x=>x?.shiftId)));
+        synced.histories.push(...v38Clone((requestedLocal.histories||[]).filter(x=>x?.shiftId)));
+        synced.reportEditRequests.push(...v38Clone((requestedLocal.reportEditRequests||[]).filter(x=>x?.shiftId)));
+        synced.lateReportRequests.push(...v38Clone((requestedLocal.lateReportRequests||[]).filter(x=>x?.shiftId)));
         for(const r of remoteResults){
           if(r?.deleted) v38RemoveShiftFromDb(synced,r.shiftId);
           else if(r?.envelope) v38ReplaceEnvelopeInDb(synced,r.envelope);
@@ -6200,26 +6499,40 @@
         lastSyncedDb=v38Clone(synced);
         localDirty=!deepEqual(db,synced);
         lastCloudSaveError="";
+        v39SaveFailures=0;
         persistLocalSnapshot();
         if(localDirty) scheduleCloudRetry(250);
         return {ok:true,changedShiftCount:changedIds.length};
       }catch(err){
         console.error("Không lưu được Firestore V38",err);
+        v39SaveFailures++;
         localDirty=true;
         lastCloudSaveError=err?.message||String(err);
         warnStorage(lastCloudSaveError||"Không lưu được lên Firestore. Dữ liệu cục bộ vẫn được giữ.");
         scheduleCloudRetry(5000);
         return {ok:false,error:err};
-      }finally{cloudWriteInFlight=Math.max(0,cloudWriteInFlight-1);}
+      }finally{
+        cloudWriteInFlight=Math.max(0,cloudWriteInFlight-1);
+        if(!cloudWriteInFlight){
+          const pending=deferredCloudSnapshots.splice(0);
+          pending.forEach(apply=>apply());
+        }
+      }
     }
     
     // ---------- V38 override: realtime ----------
     function startCloudRealtimeSync(){
       if(!cloudReady||!cloudDocRef||cloudUnsubscribe) return;
-      const mainUnsub=cloudDocRef.onSnapshot(snap=>{
+      const applyMain=snap=>{
+        if(snap.metadata?.hasPendingWrites || snap.metadata?.fromCache) return;
+        if(cloudWriteInFlight){deferredCloudSnapshots.push(()=>applyMain(snap));return;}
         if(!snap.exists||!snap.data()?.data)return;
         try{
-          const incomingMain=v38MainData(snap.data().data);
+          const payload=snap.data();
+          if(payload.logsInSubcollection&&!v39LogsInSubcollection){v39LogsInSubcollection=true;v39StartLogListener();}
+          v39RememberLogs(payload.data.dataLogs);
+          const incomingMain=v38MainData(payload.data);
+          if(!localDirty&&lastSyncedDb&&deepEqual(incomingMain,v38MainData(lastSyncedDb))) return;
           const currentMain=v38MainData(db||{});
           const baseMain=lastSyncedDb?v38MainData(lastSyncedDb):null;
           const mergedMain=localDirty&&baseMain?threeWayMerge(baseMain,currentMain,incomingMain):incomingMain;
@@ -6233,22 +6546,41 @@
             const preservedEnvelopes=(lastSyncedDb.shifts || []).map(shift=>v38ShiftEnvelope(lastSyncedDb,shift));
             lastSyncedDb=v38Hydrate(incomingMain,preservedEnvelopes);
           }
-          applyDbDefaults(); persistLocalSnapshot();
+          applyDbDefaults();
           const userId=sessionStorage.getItem(SESSION_KEY); currentUser=db.accounts.find(a=>a.id===userId)||null;
-          renderApp(); syncingFromCloud=false; if(localDirty)scheduleCloudRetry(250);
+          syncingFromCloud=false; v39AfterRemoteChange(); if(localDirty)scheduleCloudRetry(250);
         }catch(e){syncingFromCloud=false;console.error("Lỗi realtime main V38",e);}
-      },err=>{console.error("Lỗi realtime main Firestore",err);warnStorage("Lỗi đồng bộ Firestore main. Hệ thống sẽ thử lại.");});
-    
-      v38ShiftUnsubscribe=cloudDB.collection(V38_SHIFT_COLLECTION).onSnapshot(snap=>{
+      };
+      const mainUnsub=cloudDocRef.onSnapshot({includeMetadataChanges:true},applyMain,restartCloudListeners);
+
+      // V39: chỉ xử lý những ca vừa đổi. Danh sách đổi được cộng dồn qua cả các snapshot
+      // bị bỏ qua (cache/đang ghi), nên không ca nào bị sót.
+      const dirtyShiftIds=new Set();
+      let fullShiftScan=true;
+      const applyShifts=snap=>{
+        if(typeof snap.docChanges==="function"){
+          try{ snap.docChanges().forEach(change=>dirtyShiftIds.add(String(change.doc.id))); }catch(_){ fullShiftScan=true; }
+        }else fullShiftScan=true;
+        if(snap.metadata?.hasPendingWrites || snap.metadata?.fromCache) return;
+        if(cloudWriteInFlight){deferredCloudSnapshots.push(()=>applyShifts(snap));return;}
         try{
           syncingFromCloud=true;
-          for(const change of snap.docChanges()){
+          const docsById=new Map(snap.docs.map(doc=>[String(doc.id),doc]));
+          const ids=fullShiftScan?[...docsById.keys()]:[...dirtyShiftIds].filter(shiftId=>docsById.has(shiftId));
+          fullShiftScan=false; dirtyShiftIds.clear();
+          const changes=ids.map(shiftId=>({type:"modified",doc:docsById.get(shiftId)}));
+          // Ca ngoài khoảng ngày đang theo dõi không có trong snapshot nhưng không phải bị xóa.
+          for(const shift of lastSyncedDb?.shifts || []){
+            if(!docsById.has(String(shift.id))&&v39InShiftWindow(shift)) changes.push({type:"removed",doc:{id:String(shift.id),data:()=>({})}});
+          }
+          if(!changes.length){syncingFromCloud=false;return;}
+          for(const change of changes){
             const data=change.doc.data()||{};
             const shiftId=String(data.shift?.id||change.doc.id);
             if(change.type==="removed"){
               const baseShift=(lastSyncedDb?.shifts||[]).find(s=>String(s.id)===shiftId);
               const localShift=(db?.shifts||[]).find(s=>String(s.id)===shiftId);
-              if(!localDirty||!baseShift||deepEqual(baseShift,localShift)) v38RemoveShiftFromDb(db,shiftId);
+              if(!localDirty||!baseShift||(localShift && deepEqual(v38ShiftEnvelope(lastSyncedDb,baseShift),v38ShiftEnvelope(db,localShift)))) v38RemoveShiftFromDb(db,shiftId);
               if(lastSyncedDb)v38RemoveShiftFromDb(lastSyncedDb,shiftId);
               continue;
             }
@@ -6265,16 +6597,18 @@
             }else{
               nextEnv=v38ProtectWorkerMetrics(null,{shift:localShift||{}},remoteEnv,nextEnv);
             }
-            v38ReplaceEnvelopeInDb(db,nextEnv);
+            if(!(localDirty && baseShift && !localShift)) v38ReplaceEnvelopeInDb(db,nextEnv);
             if(!lastSyncedDb)lastSyncedDb=v38Clone(db); else v38ReplaceEnvelopeInDb(lastSyncedDb,remoteEnv);
           }
-          applyDbDefaults(); persistLocalSnapshot();
+          applyDbDefaults();
           const userId=sessionStorage.getItem(SESSION_KEY); currentUser=db.accounts.find(a=>a.id===userId)||null;
-          renderApp(); syncingFromCloud=false; if(localDirty)scheduleCloudRetry(250);
-        }catch(e){syncingFromCloud=false;console.error("Lỗi realtime shifts V38",e);}
-      },err=>{console.error("Lỗi realtime shift collection",err);warnStorage("Lỗi đồng bộ danh sách ca live. Hệ thống sẽ thử lại.");});
-    
-      cloudUnsubscribe=()=>{try{mainUnsub&&mainUnsub();}catch(e){} try{v38ShiftUnsubscribe&&v38ShiftUnsubscribe();}catch(e){} v38ShiftUnsubscribe=null; cloudUnsubscribe=null;};
+          syncingFromCloud=false; v39AfterRemoteChange(); if(localDirty)scheduleCloudRetry(250);
+        }catch(e){syncingFromCloud=false;fullShiftScan=true;console.error("Lỗi realtime shifts V38",e);}
+      };
+      v38ShiftUnsubscribe=v39ShiftQuery().onSnapshot({includeMetadataChanges:true},applyShifts,restartCloudListeners);
+      v39StartLogListener();
+
+      cloudUnsubscribe=()=>{try{mainUnsub&&mainUnsub();}catch(e){} try{v38ShiftUnsubscribe&&v38ShiftUnsubscribe();}catch(e){} try{v39LogUnsubscribe&&v39LogUnsubscribe();}catch(e){} v38ShiftUnsubscribe=null; v39LogUnsubscribe=null; cloudUnsubscribe=null;};
     }
     
     // ---------- V38 override: atomic support join ----------
@@ -6340,16 +6674,333 @@
       finally{endAction(actionKey);}
     }
     
-    // ---------- V38 status text ----------
+    // ---------- V39: nhiều người dùng đồng thời + giữ phiên bản cũ ----------
+    // - Nhật ký thao tác lưu từng dòng trong liveDashboard/main/activityLogs (chỉ thêm, không tranh ghi).
+    // - Document chính chỉ được ghi khi tài khoản/cấu hình/ghi chú chung thay đổi.
+    // - Trước mỗi lần ghi đè hoặc xóa, bản cũ được lưu vào liveDashboardRevisions để Admin khôi phục.
+    const V39_REVISION_COLLECTION = "liveDashboardRevisions";
+    const V39_MAX_REVISION_BYTES = 900000;
+    const v39LogStore = new Map();
+    let v39LogsInSubcollection = false;
+    let v39LogUnsubscribe = null;
+    let v39RevisionsEnabled = true;
+    let v39RevisionError = "";
+    let v39SaveFailures = 0;
+    let v39RenderTimer = null;
+    let v39RevisionRows = null;
+    let v39RevisionFilter = "";
+    let v39RevisionLoading = false;
+
+    // ---------- V39: chỉ tải ca gần đây để giảm lượt đọc Firestore ----------
+    // Mỗi người mở trang chỉ đọc và theo dõi realtime các ca từ đầu tháng trước trở đi.
+    // Ca cũ hơn vẫn nguyên trên server; bấm "Xem ca cũ hơn" để mở rộng khoảng ngày.
+    const V39_RECENT_MONTHS = 1;
+    const V39_OLDER_STEP_MONTHS = 3;
+    function v39MonthStart(monthsBack, fromISO=todayISO()){
+      const [y,m] = fromISO.split("-").map(Number);
+      return new Date(Date.UTC(y, m - 1 - monthsBack, 1)).toISOString().slice(0,10);
+    }
+    let v39ShiftWindowFrom = v39MonthStart(V39_RECENT_MONTHS); // "" = toàn bộ lịch sử
+    function v39ShiftQuery(){
+      const ref = cloudDB.collection(V38_SHIFT_COLLECTION);
+      return v39ShiftWindowFrom ? ref.where("date",">=",v39ShiftWindowFrom) : ref;
+    }
+    function v39InShiftWindow(shift){
+      return !v39ShiftWindowFrom || String(shift?.date || "") >= v39ShiftWindowFrom;
+    }
+    function v39LoadOlderShifts(all=false){
+      if(!cloudReady || !cloudDB) return toast("Cần kết nối cloud để tải ca cũ");
+      if(!v39ShiftWindowFrom) return;
+      if(all && !(isAdmin() || isLeadLive())) return toast("Chỉ Admin hoặc Lead Live được tải toàn bộ lịch sử");
+      v39ShiftWindowFrom = all ? "" : v39MonthStart(V39_OLDER_STEP_MONTHS, v39ShiftWindowFrom);
+      // Mở lại listener với khoảng ngày mới; snapshot đầu tiên đưa các ca cũ vào màn hình.
+      if(cloudUnsubscribe) cloudUnsubscribe();
+      startCloudRealtimeSync();
+      toast(all ? "Đang tải toàn bộ lịch sử ca live…" : `Đang tải thêm ca từ ${v39ShiftWindowFrom.split("-").reverse().join("/")}…`);
+      renderContent();
+    }
+    function shiftWindowNotice(){
+      if(!cloudReady) return "";
+      if(!v39ShiftWindowFrom) return `<div class="shift-window-note">Đang hiển thị toàn bộ lịch sử ca live.</div>`;
+      return `<div class="shift-window-note">Đang hiển thị ca từ <b>${v39ShiftWindowFrom.split("-").reverse().join("/")}</b> trở đi.
+        <button class="link-button" onclick="v39LoadOlderShifts()">Xem thêm ${V39_OLDER_STEP_MONTHS} tháng trước</button>
+        ${isAdmin() || isLeadLive() ? `<button class="link-button" onclick="v39LoadOlderShifts(true)">Tải toàn bộ</button>` : ""}</div>`;
+    }
+
+    function v39RememberLogs(rows){
+      let added = 0;
+      for(const row of rows || []){
+        if(!row?.id) continue;
+        if(!v39LogStore.has(String(row.id))) added++;
+        v39LogStore.set(String(row.id),row);
+      }
+      if(v39LogStore.size > MAIN_LOG_RETENTION * 2){
+        const keep = v39RecentLogs();
+        v39LogStore.clear();
+        keep.forEach(row=>v39LogStore.set(String(row.id),row));
+      }
+      return added;
+    }
+    function v39RecentLogs(){
+      return [...v39LogStore.values()].sort((a,b)=>Number(a?.ts||0)-Number(b?.ts||0)).slice(-MAIN_LOG_RETENTION);
+    }
+    function v39StartLogListener(){
+      if(v39LogUnsubscribe || !v39LogsInSubcollection || !cloudReady || !cloudDocRef) return;
+      v39LogUnsubscribe = cloudDocRef.collection(CLOUD_EVENT_SUBCOLLECTION).orderBy("ts","desc").limit(MAIN_LOG_RETENTION).onSnapshot(snap=>{
+        if(!v39RememberLogs(snap.docs.map(doc=>doc.data())) || !db) return;
+        db.dataLogs = v39RecentLogs();
+        if(lastSyncedDb) lastSyncedDb.dataLogs = v39RecentLogs();
+        v39AfterRemoteChange();
+      },err=>{
+        console.error("Lỗi realtime nhật ký thao tác",err);
+        v39LogUnsubscribe = null;
+      });
+    }
+    // Gộp nhiều thay đổi realtime liên tiếp thành một lần vẽ lại màn hình.
+    function v39AfterRemoteChange(){
+      if(localDirty) persistLocalSnapshot();
+      if(v39RenderTimer) return;
+      v39RenderTimer = setTimeout(()=>{
+        v39RenderTimer = null;
+        persistLocalSnapshot();
+        renderApp();
+      },150);
+    }
+
+    // Chuyển nhật ký cũ trong document chính sang activityLogs một lần, không xóa trước khi chép xong.
+    async function v39PrepareLogStorage(){
+      if(!cloudReady || !cloudDB || !cloudDocRef) return;
+      try{
+        const snap = await cloudDocRef.get({source:"server"});
+        const payload = snap.exists ? snap.data() || {} : {};
+        if(!payload.data) return;
+        if(!payload.logsInSubcollection){
+          const logsRef = cloudDocRef.collection(CLOUD_EVENT_SUBCOLLECTION);
+          const rows = (payload.data.dataLogs || []).filter(row=>row?.id);
+          for(let i=0; i<rows.length; i+=400){
+            const batch = cloudDB.batch();
+            rows.slice(i,i+400).forEach(row=>batch.set(logsRef.doc(String(row.id)),v38Clone(row),{merge:true}));
+            await batch.commit();
+          }
+          const copied = new Set(rows.map(row=>String(row.id)));
+          let previous = null;
+          await cloudDB.runTransaction(async transaction=>{
+            const current = await transaction.get(cloudDocRef);
+            const data = current.exists ? current.data() || {} : {};
+            if(data.logsInSubcollection || !data.data) return;
+            previous = v38Clone(data.data);
+            const nextData = v38Clone(data.data);
+            // Dòng nhật ký mới phát sinh trong lúc chép cũng được chép trong cùng transaction.
+            (nextData.dataLogs || []).filter(row=>row?.id && !copied.has(String(row.id))).forEach(row=>transaction.set(logsRef.doc(String(row.id)),v38Clone(row),{merge:true}));
+            v39RememberLogs(nextData.dataLogs);
+            delete nextData.dataLogs;
+            transaction.set(cloudDocRef,{
+              data:nextData,
+              logsInSubcollection:true,
+              updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+              updatedAtText:nowText(),
+              updatedBy:currentUser?.name || "V39 migration"
+            },{mergeFields:["data","logsInSubcollection","updatedAt","updatedAtText","updatedBy"]});
+          });
+          v39WriteRevision("main","main",previous,"move-logs");
+        }
+        v39LogsInSubcollection = true;
+        v39StartLogListener();
+      }catch(err){
+        console.error("Chưa chuyển được nhật ký sang activityLogs; tạm giữ cách lưu cũ",err);
+      }
+    }
+
+    function v39WriteRevision(kind,targetId,previous,action){
+      if(!v39RevisionsEnabled || !cloudReady || !cloudDB || !previous) return;
+      const payload = {
+        kind,
+        targetId:String(targetId || ""),
+        shiftId:kind === "shift" ? String(targetId || "") : "",
+        shiftLabel:kind === "shift" && previous.shift ? shiftLabel(previous.shift) : "",
+        action,
+        previous,
+        ts:nowTs(),
+        time:nowText(),
+        by:currentUser?.name || "system",
+        byId:currentUser?.id || ""
+      };
+      const bytes = v38JsonBytes(payload);
+      if(bytes > V39_MAX_REVISION_BYTES){ console.warn(`Phiên bản ${kind}/${targetId} quá lớn (${Math.round(bytes/1024)}KB), bỏ qua.`); return; }
+      const failed = err=>{
+        console.error("Không lưu được phiên bản dự phòng",err);
+        v39RevisionError = err?.code || err?.message || "lỗi không xác định";
+        if(err?.code === "permission-denied"){
+          v39RevisionsEnabled = false;
+          if(isAdmin()) warnStorage("Firestore Rules chưa cho phép ghi liveDashboardRevisions nên chưa lưu được phiên bản cũ.");
+        }
+      };
+      // Ghi phiên bản là việc phụ: lỗi ở đây không bao giờ được làm hỏng lượt lưu chính.
+      try{ Promise.resolve(cloudDB.collection(V39_REVISION_COLLECTION).add(payload)).catch(failed); }
+      catch(err){ failed(err); }
+    }
+
+    function v39DownloadJson(filename,value){
+      const url = URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:"application/json"}));
+      const link = document.createElement("a");
+      link.href = url; link.download = filename;
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }
+    function v39DownloadBackup(){
+      if(!isAdmin()) return toast("Chỉ Admin được tải bản sao lưu");
+      const data = v38Clone(db);
+      (data.accounts || []).forEach(account=>delete account.passwordHash);
+      v39DownloadJson(`gooby-sao-luu-${todayISO()}.json`,{
+        exportedAt:nowText(), exportedBy:currentUser.name, schemaVersion:V38_STORAGE_SCHEMA_VERSION,
+        note:"Mật khẩu không được đưa vào file sao lưu.", data
+      });
+      recordDatabaseEvent({module:"backup",action:"Tải bản sao lưu toàn bộ",details:{shifts:data.shifts.length,accounts:data.accounts.length}});
+      saveDB();
+    }
+    async function v39LoadRevisions(){
+      if(!isAdmin()) return toast("Chỉ Admin được xem phiên bản cũ");
+      if(!cloudReady || !cloudDB) return toast("Cần kết nối cloud để xem phiên bản cũ");
+      v39RevisionFilter = document.getElementById("revisionShiftFilter")?.value || "";
+      v39RevisionLoading = true; renderBackup();
+      try{
+        const ref = cloudDB.collection(V39_REVISION_COLLECTION);
+        // Lọc theo ca chỉ dùng điều kiện bằng để không cần tạo composite index.
+        const snap = await (v39RevisionFilter ? ref.where("shiftId","==",v39RevisionFilter).limit(200) : ref.orderBy("ts","desc").limit(60)).get();
+        v39RevisionRows = snap.docs.map(doc=>({id:doc.id,...doc.data()})).sort((a,b)=>Number(b.ts||0)-Number(a.ts||0));
+      }catch(err){
+        console.error("Không tải được phiên bản cũ",err);
+        v39RevisionRows = [];
+        toast(`Không tải được phiên bản cũ (${err?.code || err?.message || "lỗi mạng"})`);
+      }finally{
+        v39RevisionLoading = false; renderBackup();
+      }
+    }
+    function v39DownloadRevision(revisionId){
+      const rev = (v39RevisionRows || []).find(r=>r.id === revisionId);
+      if(!rev) return;
+      const copy = v38Clone(rev);
+      (copy.previous?.accounts || []).forEach(account=>delete account.passwordHash);
+      v39DownloadJson(`gooby-phien-ban-${rev.kind}-${rev.id}.json`,copy);
+    }
+    async function v39RestoreShiftRevision(revisionId){
+      if(!isAdmin()) return toast("Chỉ Admin được khôi phục dữ liệu");
+      const rev = (v39RevisionRows || []).find(r=>r.id === revisionId);
+      const prev = rev?.previous;
+      if(rev?.kind !== "shift" || !prev?.shift?.id) return toast("Phiên bản này không khôi phục được");
+      if(!confirm(`Khôi phục ca ${shiftLabel(prev.shift)} về trạng thái lúc ${rev.time}?\n\nTrạng thái hiện tại sẽ được lưu thành một phiên bản mới. Ghi chú và lịch sử hiện có không bị xóa.`)) return;
+      const actionKey = `restore:${revisionId}`;
+      if(!beginAction(actionKey)) return;
+      try{
+        if(cloudReady && !db.shifts.some(s=>String(s.id) === String(prev.shift.id))){
+          // Ca ngoài khoảng ngày đang tải: lấy bản hiện tại trên server làm gốc để không ghi đè mù.
+          const snap = await v38ShiftRef(prev.shift.id).get({source:"server"});
+          const remoteEnv = snap.exists ? v38EnvelopeFromDoc(snap) : null;
+          if(remoteEnv){
+            v38ReplaceEnvelopeInDb(db,remoteEnv);
+            if(lastSyncedDb) v38ReplaceEnvelopeInDb(lastSyncedDb,remoteEnv);
+          }
+        }
+        const current = db.shifts.find(s=>String(s.id) === String(prev.shift.id));
+        const currentEnv = current ? v38ShiftEnvelope(db,current) : {};
+        const restored = {shift:v38Clone(prev.shift)};
+        for(const key of ["notes","histories","reportEditRequests","lateReportRequests"]){
+          restored[key] = dedupeEntities([...(prev[key] || []),...(currentEnv[key] || [])].map(v38Clone));
+        }
+        v38ReplaceEnvelopeInDb(db,restored);
+        recordDatabaseEvent({module:"backup",action:"Khôi phục ca từ phiên bản cũ",shift:restored.shift,details:{revisionId,revisionTime:rev.time,revisionBy:rev.by}});
+        const result = await saveDB({immediate:true});
+        toast(result?.ok ? "Đã khôi phục ca live" : "Đã khôi phục trên máy, đang chờ đồng bộ cloud");
+        renderContent();
+      }finally{ endAction(actionKey); }
+    }
+    function v39RevisionSummary(rev){
+      const p = rev.previous || {};
+      if(rev.kind !== "shift") return `${(p.accounts || []).length} tài khoản · ${(p.channels || []).length} kênh bán`;
+      const s = p.shift || {};
+      const parts = [`Host: ${s.hostName || "-"}`, `Trợ: ${s.supportName || "-"}`];
+      if(s.host?.checkinTime) parts.push(`Host check-in ${s.host.checkinTime}`);
+      if(s.report) parts.push(`Báo cáo GMV ${money(s.report.gmv || 0)}`);
+      return parts.join(" · ");
+    }
+    function renderBackup(){
+      const wrap = document.getElementById("backupWrap");
+      if(!wrap || !isAdmin()) return;
+      const actionLabel = {update:"Trước khi sửa",delete:"Trước khi xóa","move-logs":"Trước khi tách nhật ký"};
+      const shiftOptions = [...db.shifts].sort((a,b)=>(b.date+b.start).localeCompare(a.date+a.start)).slice(0,400)
+        .map(s=>`<option value="${escapeAttr(s.id)}" ${v39RevisionFilter === s.id ? "selected" : ""}>${escapeHtml(shiftLabel(s))}</option>`).join("");
+      const rows = v39RevisionRows || [];
+      wrap.innerHTML = `
+        <div class="card v39-backup-status">
+          <div><b>Phiên bản tự động:</b> ${v39RevisionsEnabled ? `<span class="badge green">Đang bật</span>` : `<span class="badge red">Bị chặn bởi Firestore Rules</span>`}
+            ${v39RevisionError ? `<span class="meta"> · Lỗi gần nhất: ${escapeHtml(v39RevisionError)}</span>` : ""}</div>
+          <p class="meta">Mỗi lần một ca hoặc cấu hình chung bị sửa/xóa, bản trước đó được lưu trong <code>${V39_REVISION_COLLECTION}</code>. Khôi phục một ca chỉ đưa thông tin ca về bản cũ. Ghi chú và lịch sử hiện có vẫn được giữ.</p>
+        </div>
+        <div class="v39-backup-toolbar">
+          <select id="revisionShiftFilter" aria-label="Lọc theo ca live">
+            <option value="">Tất cả thay đổi gần nhất</option>${shiftOptions}
+          </select>
+          <button onclick="v39LoadRevisions()" ${v39RevisionLoading ? "disabled" : ""}>${v39RevisionLoading ? "Đang tải…" : "Xem phiên bản cũ"}</button>
+        </div>
+        ${v39RevisionRows === null ? `<div class="empty">Chọn ca live (hoặc để trống) rồi bấm “Xem phiên bản cũ”.</div>` : (!rows.length ? `<div class="empty">Chưa có phiên bản cũ nào cho lựa chọn này.</div>` : `
+        <div class="table-scroll"><table>
+          <thead><tr><th>Thời điểm lưu</th><th>Người thao tác</th><th>Loại</th><th>Nội dung bản cũ</th><th></th></tr></thead>
+          <tbody>${rows.map(rev=>`
+            <tr>
+              <td>${escapeHtml(rev.time || "")}</td>
+              <td>${escapeHtml(rev.by || "")}</td>
+              <td>${rev.kind === "shift" ? "Ca live" : "Cấu hình chung"}<br><span class="meta">${actionLabel[rev.action] || escapeHtml(rev.action || "")}</span></td>
+              <td>${rev.shiftLabel ? `<b>${escapeHtml(rev.shiftLabel)}</b><br>` : ""}<span class="meta">${escapeHtml(v39RevisionSummary(rev))}</span></td>
+              <td class="v39-row-actions">
+                <button class="small secondary" onclick="v39DownloadRevision('${escapeAttr(rev.id)}')">Tải JSON</button>
+                ${rev.kind === "shift" ? `<button class="small" onclick="v39RestoreShiftRevision('${escapeAttr(rev.id)}')">Khôi phục ca</button>` : ""}
+              </td>
+            </tr>`).join("")}
+          </tbody>
+        </table></div>`)}
+      `;
+    }
+
+    function v39UpdateSyncPill(){
+      const el = document.getElementById("syncPill");
+      if(!el) return;
+      let state = "ok", text = cloudReady ? "Đã lưu" : "Chỉ lưu trên máy";
+      if(!cloudReady && hasFirebaseConfig()){ state = "warn"; text = localDirty ? "Mất mạng · giữ thay đổi" : "Mất kết nối"; }
+      else if(cloudReady && localDirty && lastCloudSaveError){ state = "error"; text = "Chưa lưu · thử lại"; }
+      else if(cloudReady && (localDirty || cloudWriteInFlight)){ state = "busy"; text = "Đang lưu…"; }
+      if(!localSnapshotSaved && localDirty){ state = "error"; text = "Giữ trang mở · chưa lưu"; }
+      if(el.textContent !== text) el.textContent = text;
+      el.dataset.state = state;
+      el.title = cloudStatusText() + (lastCloudSaveError ? " · " + lastCloudSaveError : "");
+    }
+
+    // ---------- V39 status text ----------
     function cloudStatusText(){
-      if(cloudReady&&localDirty)return "Cloud Firestore V38: đang đồng bộ thay đổi";
-      if(cloudReady&&lastCloudSaveError)return "Cloud Firestore V38: có lỗi lưu, hệ thống đang thử lại";
-      return cloudReady?"Cloud Firestore V38: dữ liệu đã tách theo từng ca":"LocalStorage: dữ liệu chỉ lưu trên máy này";
+      if(!localSnapshotSaved && localDirty) return "Chưa lưu được trên máy. Giữ trang mở để đồng bộ";
+      if(cloudReady&&localDirty)return "Cloud Firestore: đang đồng bộ thay đổi";
+      if(cloudReady&&lastCloudSaveError)return "Cloud Firestore: có lỗi lưu, hệ thống đang thử lại";
+      return cloudReady?"Cloud Firestore V39: dữ liệu tách theo từng ca, có lưu phiên bản cũ":"LocalStorage: dữ liệu chỉ lưu trên máy này";
     }
     /* === GOOBY V38 STORAGE ADAPTER FINAL END === */
 
+    function restartCloudListeners(err){
+      console.error("Đồng bộ trực tiếp bị ngắt",err);
+      if(cloudUnsubscribe) cloudUnsubscribe();
+      cloudReady=false;
+      warnStorage("Mất kết nối đồng bộ. Đang thử kết nối lại; vui lòng giữ trang mở.");
+      scheduleCloudReconnect();
+    }
+    window.addEventListener("online",()=>{
+      if(cloudReady){if(localDirty) saveDB({immediate:true});}
+      else {if(cloudReconnectTimer){clearTimeout(cloudReconnectTimer);cloudReconnectTimer=null;}scheduleCloudReconnect(1000);}
+    });
+    window.addEventListener("beforeunload",event=>{
+      if(localDirty){persistLocalSnapshot();if(!localSnapshotSaved){event.preventDefault();event.returnValue="";}}
+    });
+
     async function init(){
       await loadDB();
+      await v39PrepareLogStorage();
       renderApp();
       document.getElementById("clockPill").textContent = clockText();
     }
