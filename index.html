@@ -6492,9 +6492,13 @@
           if(!l||!b) return true;
           return !deepEqual(v38ShiftEnvelope(requestedLocal,l),v38ShiftEnvelope(requestedBase,b));
         });
-        const remoteResults=[];
-        for(const shiftId of changedIds) remoteResults.push(await v38SaveEnvelope(requestedBase,requestedLocal,shiftId));
-    
+        // V39: mỗi ca lưu độc lập; một ca lỗi (quá lớn, mất mạng giữa chừng…) không chặn các ca khác.
+        const remoteResults=[], failed=[];
+        for(const shiftId of changedIds){
+          try{ remoteResults.push(await v38SaveEnvelope(requestedBase,requestedLocal,shiftId)); }
+          catch(err){ failed.push({shiftId,err}); console.error(`Chưa lưu được ca ${shiftId}`,err); }
+        }
+
         const synced=v38Hydrate(mergedMain,[]);
         // Start from base/current local for unchanged docs, then replace changed docs with transaction results.
         synced.shifts=v38Clone(requestedLocal.shifts||[]);
@@ -6506,16 +6510,33 @@
           if(r?.deleted) v38RemoveShiftFromDb(synced,r.shiftId);
           else if(r?.envelope) v38ReplaceEnvelopeInDb(synced,r.envelope);
         }
+        // Ca chưa lưu được: bản đã đồng bộ vẫn là bản cũ, để lần sau còn thấy thay đổi cần lưu.
+        for(const {shiftId} of failed){
+          const baseShift=(requestedBase?.shifts||[]).find(s=>String(s.id)===shiftId);
+          if(baseShift) v38ReplaceEnvelopeInDb(synced,v38ShiftEnvelope(requestedBase,baseShift)); else v38RemoveShiftFromDb(synced,shiftId);
+        }
         applyOperationalBounds(synced);
         const newerLocal=v38Clone(db);
         db=threeWayMerge(requestedLocal,newerLocal,synced);
+        // Giữ nguyên bản trên máy của các ca chưa lưu được (không để bị thay bằng bản cũ).
+        for(const {shiftId} of failed){
+          const localShift=(newerLocal.shifts||[]).find(s=>String(s.id)===shiftId);
+          if(localShift) v38ReplaceEnvelopeInDb(db,v38ShiftEnvelope(newerLocal,localShift));
+        }
         applyDbDefaults();
         lastSyncedDb=v38Clone(synced);
         localDirty=!deepEqual(db,synced);
+        persistLocalSnapshot();
+        if(failed.length){
+          v39SaveFailures++;
+          lastCloudSaveError=`Chưa lưu được ${failed.length}/${changedIds.length} ca: ${failed[0].err?.message||failed[0].err}`;
+          warnStorage(lastCloudSaveError+" Dữ liệu vẫn được giữ trên máy và sẽ thử lại.");
+          scheduleCloudRetry(5000);
+          return {ok:false,partial:true,failedShiftIds:failed.map(f=>f.shiftId),changedShiftCount:changedIds.length};
+        }
         lastCloudSaveError="";
         v39SaveFailures=0;
         if(v39RecoveryPending) v39MarkDeviceRecovered();
-        persistLocalSnapshot();
         if(localDirty) scheduleCloudRetry(250);
         return {ok:true,changedShiftCount:changedIds.length};
       }catch(err){
