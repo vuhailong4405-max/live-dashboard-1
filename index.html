@@ -1353,9 +1353,6 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 
   <script>
     const DB_KEY = "live_realtime_dashboard_v3";
@@ -1367,18 +1364,12 @@
     let lastShopeeAutoSyncText = "Chưa đồng bộ";
 
 
-    // ================= FIREBASE CLOUD DATABASE =================
-    // BƯỚC BẮT BUỘC: thay các giá trị dưới đây bằng firebaseConfig của dự án Firebase của bạn.
-    // Vào Firebase Console > Project settings > Your apps > Web app > SDK setup and configuration.
-    const firebaseConfig = {
-      apiKey: "AIzaSyCrFznCuxARMFWPSDcZVpscszCcRKFUha8",
-      authDomain: "live-dashboard-ba1c2.firebaseapp.com",
-      projectId: "live-dashboard-ba1c2",
-      storageBucket: "live-dashboard-ba1c2.firebasestorage.app",
-      messagingSenderId: "862452288876",
-      appId: "1:862452288876:web:5be9d447ae65bf7116b749",
-      measurementId: "G-H1QPK7X98R"
-    };
+    // ================= MÁY CHỦ DỮ LIỆU (VPS Hetzner) =================
+    // Dữ liệu lưu trên máy chủ riêng; lớp kết nối bên dưới giữ đúng các hàm kiểu Firestore
+    // (collection/doc/get/set/runTransaction/onSnapshot) nên phần đồng bộ và gộp dữ liệu không đổi.
+    const LIVE_API_BASE = "https://188-245-105-61.sslip.io/live-api";
+    const LIVE_TOKEN_KEY = "gooby_live_token";
+    const LIVE_ACCOUNT_KEY = "gooby_live_account";
 
     const CLOUD_COLLECTION = "liveDashboard";
     const CLOUD_DOC_ID = "main";
@@ -1482,11 +1473,166 @@
     }
 
     function hasFirebaseConfig(){
-      return firebaseConfig
-        && firebaseConfig.apiKey
-        && !String(firebaseConfig.apiKey).includes("DAN_")
-        && firebaseConfig.projectId
-        && !String(firebaseConfig.projectId).includes("DAN_");
+      return /^https:\/\//.test(LIVE_API_BASE) && !LIVE_API_BASE.includes("DAN_");
+    }
+
+    // ---------- Lớp kết nối máy chủ VPS (thay Firebase SDK) ----------
+    function liveToken(){ try{ return localStorage.getItem(LIVE_TOKEN_KEY) || ""; }catch(_){ return ""; } }
+    // Giá trị "giờ máy chủ" giống FieldValue.serverTimestamp() của Firestore.
+    var firebase = typeof firebase !== "undefined" ? firebase : { firestore:{ FieldValue:{ serverTimestamp:()=>({__serverTimestamp:true}) } } };
+    function liveError(message, code, status){ return Object.assign(new Error(message),{code,status}); }
+    async function liveFetch(route, body){
+      let res;
+      try{
+        res = await fetch(LIVE_API_BASE + route,{method:body ? "POST" : "GET",cache:"no-store",
+          headers:{"Content-Type":"application/json","Authorization":"Bearer " + liveToken()},body:body ? JSON.stringify(body) : undefined});
+      }catch(err){ throw liveError("Không kết nối được máy chủ dữ liệu","unavailable",0); }
+      const data = await res.json().catch(()=>({}));
+      if(res.status === 401){ onLiveSessionExpired(); throw liveError(data.error || "Phiên đăng nhập đã hết hạn","unauthenticated",401); }
+      if(res.status === 409) return {conflict:true,data};
+      if(!res.ok) throw liveError(data.error || `Máy chủ báo lỗi ${res.status}`, res.status === 403 ? "permission-denied" : (res.status === 413 ? "invalid-argument" : "unavailable"), res.status);
+      return {data};
+    }
+    function createLiveStore(){
+      const token = liveToken();
+      const known = new Map(); // path -> phiên bản mới nhất đã thấy
+      const docListeners = new Set(), queryListeners = new Set();
+      const clone = v=>v === undefined ? undefined : JSON.parse(JSON.stringify(v));
+      const docSnap = (path, doc)=>({id:path.split("/").pop(), ref:docRef(path), exists:!!doc?.exists,
+        data:()=>doc?.exists ? clone(doc.data) : undefined, metadata:{hasPendingWrites:false,fromCache:false}});
+      const matches = (q, data)=>q.where.every(([field,op,value])=>{
+        const v = String(field).split(".").reduce((n,k)=>n == null ? undefined : n[k], data);
+        if(v === undefined || v === null) return false;
+        return op === "==" ? v === value : op === ">=" ? v >= value : op === ">" ? v > value : op === "<=" ? v <= value : v < value;
+      });
+      const ordered = q=>{
+        let docs = [...q.docs.values()];
+        if(q.orderBy){ const {field,dir} = q.orderBy; docs.sort((a,b)=>{ const x=a.data?.[field], y=b.data?.[field]; return (x > y ? 1 : x < y ? -1 : 0) * (dir === "desc" ? -1 : 1); }); }
+        return q.limit ? docs.slice(0,q.limit) : docs;
+      };
+      const querySnap = (q, changes)=>{
+        const docs = ordered(q).map(d=>docSnap(d.path,{exists:true,data:d.data}));
+        return {docs,size:docs.length,empty:!docs.length,metadata:{hasPendingWrites:false,fromCache:false},
+          docChanges:()=>changes.map(c=>({type:c.type,doc:docSnap(c.path,{exists:!c.deleted,data:c.data})}))};
+      };
+      const getDoc = async path=>{
+        const {data} = await liveFetch(`/api/doc?path=${encodeURIComponent(path)}`);
+        if(data.exists) known.set(path,Math.max(known.get(path) || 0,data.version));
+        return data;
+      };
+      const runQuery = async q=>{
+        const {data} = await liveFetch("/api/query",{parent:q.parent,where:q.where,orderBy:q.orderBy,limit:q.limit});
+        return data.docs || [];
+      };
+      const toWrite = (op, path, data, options)=>({op, path, data:clone(data),
+        ...(options?.merge ? {merge:true} : {}), ...(Array.isArray(options?.mergeFields) ? {mergeFields:options.mergeFields} : {})});
+      const commit = async (writes, reads=[])=>{
+        const res = await liveFetch("/api/commit",{reads,writes});
+        if(res.conflict) throw liveError("Dữ liệu vừa bị thay đổi ở máy khác","aborted",409);
+        return res.data;
+      };
+
+      // Realtime: một kết nối SSE cho cả trang; mất kết nối thì tự nối lại và tải lại để không sót thay đổi.
+      let source = null, resyncNeeded = false;
+      function applyChanges(changes){
+        for(const c of changes){
+          if((known.get(c.path) || 0) >= c.version && !c.deleted) continue;
+          known.set(c.path,c.version);
+          for(const l of docListeners) if(l.path === c.path) l.emit(docSnap(c.path,{exists:!c.deleted,data:c.data}));
+          for(const q of queryListeners){
+            if(q.parent !== c.parent) continue;
+            if(q.loading){ q.buffer.push(c); continue; }
+            const had = q.docs.has(c.path), fits = !c.deleted && matches(q,c.data);
+            if(fits) q.docs.set(c.path,{path:c.path,data:c.data}); else q.docs.delete(c.path);
+            if(had || fits) q.emit(querySnap(q,[{type:!fits ? "removed" : (had ? "modified" : "added"),path:c.path,data:c.data,deleted:!fits}]));
+          }
+        }
+      }
+      function connect(){
+        if(source || typeof EventSource === "undefined") return;
+        source = new EventSource(`${LIVE_API_BASE}/api/listen?token=${encodeURIComponent(token)}`);
+        source.addEventListener("changes",e=>{ try{ applyChanges(JSON.parse(e.data)); }catch(err){ console.error("Lỗi realtime",err); } });
+        source.addEventListener("ready",()=>{ if(resyncNeeded){ resyncNeeded = false; resyncAll(); } });
+        source.onerror = ()=>{ resyncNeeded = true; };
+      }
+      async function resyncAll(){
+        for(const l of docListeners) l.load();
+        for(const q of queryListeners) q.load();
+      }
+      function listenDoc(path, next, error){
+        connect();
+        const l = {path,emit:next,load:async()=>{ try{ next(docSnap(path,await getDoc(path))); }catch(err){ if(err.code === "unauthenticated" || err.code === "permission-denied") error?.(err); } }};
+        docListeners.add(l); l.load();
+        return ()=>docListeners.delete(l);
+      }
+      function listenQuery(spec, next, error){
+        connect();
+        const q = {...spec,docs:new Map(),buffer:[],loading:false,emit:next,load:async()=>{
+          q.loading = true; q.buffer = [];
+          try{
+            const rows = await runQuery(q);
+            q.docs = new Map(rows.map(r=>[r.path,{path:r.path,data:r.data}]));
+            rows.forEach(r=>known.set(r.path,Math.max(known.get(r.path) || 0,r.version)));
+            q.loading = false;
+            next(querySnap(q,rows.map(r=>({type:"added",path:r.path,data:r.data}))));
+            const pending = q.buffer; q.buffer = []; applyChanges(pending);
+          }catch(err){ q.loading = false; if(err.code === "unauthenticated" || err.code === "permission-denied") error?.(err); }
+        }};
+        queryListeners.add(q); q.load();
+        return ()=>queryListeners.delete(q);
+      }
+      const listenArgs = args=>typeof args[0] === "function" ? [args[0],args[1]] : [args[1],args[2]];
+
+      function docRef(path){
+        return {id:path.split("/").pop(), path,
+          collection:name=>collectionRef(`${path}/${name}`),
+          get:async()=>docSnap(path,await getDoc(path)),
+          set:async(data,options)=>{ await commit([toWrite("set",path,data,options)]); },
+          update:async data=>{ await commit([{op:"update",path,data:clone(data)}]); },
+          delete:async()=>{ await commit([{op:"delete",path}]); },
+          onSnapshot:(...args)=>{ const [next,error] = listenArgs(args); return listenDoc(path,next,error); }};
+      }
+      function collectionRef(parent, spec={where:[],orderBy:null,limit:0}){
+        const q = {parent,...spec};
+        return {path:parent,
+          doc:id=>docRef(`${parent}/${id ?? (Date.now().toString(36) + Math.random().toString(36).slice(2,10))}`),
+          where:(field,op,value)=>collectionRef(parent,{...spec,where:[...spec.where,[field,op,value]]}),
+          orderBy:(field,dir="asc")=>collectionRef(parent,{...spec,orderBy:{field,dir}}),
+          limit:n=>collectionRef(parent,{...spec,limit:n}),
+          get:async()=>{ const rows = await runQuery(q); const fake = {...q,docs:new Map(rows.map(r=>[r.path,r]))}; return querySnap(fake,[]); },
+          add:async data=>{ const ref = docRef(`${parent}/${Date.now().toString(36)}${Math.random().toString(36).slice(2,10)}`); await ref.set(data); return ref; },
+          onSnapshot:(...args)=>{ const [next,error] = listenArgs(args); return listenQuery(q,next,error); }};
+      }
+      return {__live:true,__token:token,
+        collection:name=>collectionRef(name),
+        batch:()=>{ const writes = []; return {set:(ref,data,options)=>writes.push(toWrite("set",ref.path,data,options)),
+          update:(ref,data)=>writes.push({op:"update",path:ref.path,data:clone(data)}), delete:ref=>writes.push({op:"delete",path:ref.path}),
+          commit:async()=>{ for(let i=0;i<writes.length;i+=400) await commit(writes.slice(i,i+400)); }}; },
+        // Transaction lạc quan: đọc kèm phiên bản, máy chủ chỉ ghi khi chưa ai đổi; xung đột thì chạy lại (tối đa 5 lần).
+        runTransaction:async fn=>{
+          for(let attempt=0; attempt<5; attempt++){
+            const reads = [], writes = [];
+            const tx = {
+              get:async ref=>{ const d = await getDoc(ref.path); reads.push({path:ref.path,version:d.exists ? d.version : 0}); return docSnap(ref.path,d); },
+              set:(ref,data,options)=>{ writes.push(toWrite("set",ref.path,data,options)); return tx; },
+              update:(ref,data)=>{ writes.push({op:"update",path:ref.path,data:clone(data)}); return tx; },
+              delete:ref=>{ writes.push({op:"delete",path:ref.path}); return tx; }
+            };
+            const result = await fn(tx);
+            if(!writes.length) return result;
+            const res = await liveFetch("/api/commit",{reads,writes});
+            if(!res.conflict) return result;
+            await new Promise(r=>setTimeout(r,40 + Math.random()*160*(attempt+1)));
+          }
+          throw liveError("Quá nhiều người cùng sửa, sẽ thử lại","aborted",409);
+        },
+        close:()=>{ try{ source?.close(); }catch(_){} source = null; docListeners.clear(); queryListeners.clear(); }};
+    }
+    function onLiveSessionExpired(){
+      try{ localStorage.removeItem(LIVE_TOKEN_KEY); localStorage.removeItem(LIVE_ACCOUNT_KEY); }catch(_){}
+      if(cloudUnsubscribe) cloudUnsubscribe();
+      cloudDB?.close?.(); cloudDB = null; cloudReady = false;
+      if(currentUser){ currentUser = null; sessionStorage.removeItem(SESSION_KEY); renderApp(); toast("Phiên đăng nhập đã hết hạn, hãy đăng nhập lại"); }
     }
 
     function initCloudDB(){
@@ -1494,13 +1640,11 @@
         cloudReady = false;
         return false;
       }
+      // Chưa đăng nhập thì chưa có phiên làm việc với máy chủ.
+      if(!liveToken()){ cloudReady = false; return false; }
       try{
-        if(typeof firebase === "undefined") throw new Error("Firebase SDK chưa tải được");
-        if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-        cloudDB = firebase.firestore();
-        cloudStorage = firebase.storage();
-        cloudStorage.setMaxUploadRetryTime(20000);
-        cloudStorage.setMaxOperationRetryTime(20000);
+        if(!cloudDB || !cloudDB.__live || cloudDB.__token !== liveToken()) cloudDB = createLiveStore();
+        cloudStorage = null;
         cloudDocRef = cloudDB.collection(CLOUD_COLLECTION).doc(CLOUD_DOC_ID);
         cloudReady = true;
         return true;
@@ -1630,6 +1774,20 @@
       if(Date.now() - lastStorageToastAt > 5000){ lastStorageToastAt = Date.now(); toast(lastCloudSaveError); }
     }
 
+    // Tự chuyển dữ liệu cũ: tài khoản Host/Trợ live đều trở thành Nhân viên; điền giá trị mặc định.
+    // Dùng chung cho dữ liệu trên máy và bản đã đồng bộ để hai bản không lệch nhau vì định dạng.
+    function normalizeAccountRecords(accounts){
+      (accounts || []).forEach(a=>{
+        if(!a) return;
+        a.role = normalizedAccountRole(a.role);
+        if(a.kpiGmv === undefined) a.kpiGmv = 0;
+        a.shops = normalizeShopList(a.shops && a.shops.length ? a.shops : a.shop);
+        if(!a.shops.length) a.shops = a.role === "admin" ? ["Tất cả"] : [];
+        a.shop = accountShopText(a);
+      });
+      return accounts;
+    }
+
     function applyDbDefaults(){
       if(!db) return;
       if(!Array.isArray(db.accounts)) db.accounts = [];
@@ -1662,14 +1820,7 @@
         if(!r.status) r.status = "pending";
         if(r.consumed === undefined) r.consumed = false;
       });
-      db.accounts.forEach(a=>{
-        // Tự chuyển dữ liệu cũ: tài khoản Host/Trợ live đều trở thành Nhân viên.
-        a.role = normalizedAccountRole(a.role);
-        if(a.kpiGmv === undefined) a.kpiGmv = 0;
-        a.shops = normalizeShopList(a.shops && a.shops.length ? a.shops : a.shop);
-        if(!a.shops.length) a.shops = a.role === "admin" ? ["Tất cả"] : [];
-        a.shop = accountShopText(a);
-      });
+      normalizeAccountRecords(db.accounts);
       db.shifts.forEach(s=>{
         if(!s.shop) s.shop = "Khác";
         if(!s.host) s.host = {checkinTs:null,checkinTime:"",endTs:null,endTime:"",photo:"",checkinNote:"",endNote:""};
@@ -1811,44 +1962,56 @@
       });
     }
 
-    async function uploadCheckinPhotoToCloud(shiftId, role, dataUrl){
+    // ---------- Kho ảnh trong Firestore (gói miễn phí không dùng được Firebase Storage) ----------
+    // Mỗi ảnh là một tài liệu riêng trong liveDashboardPhotos; dữ liệu ca chỉ giữ mã "fsphoto:<id>".
+    // Ảnh chỉ tải khi bấm "Xem ảnh", nên mở web không phải tải toàn bộ ảnh của mọi ca.
+    // Mã ảnh tính từ nội dung, nên thử lại nhiều lần vẫn chỉ tạo một tài liệu.
+    const V39_PHOTO_COLLECTION = "liveDashboardPhotos";
+    const V39_PHOTO_PREFIX = "fsphoto:";
+    const v39PhotoCache = new Map();
+    function isPhotoRef(value){ return typeof value === "string" && value.startsWith(V39_PHOTO_PREFIX); }
+    async function v39SavePhotoDoc(shiftId, slot, dataUrl){
+      const digest = await crypto.subtle.digest("SHA-256",new TextEncoder().encode(dataUrl));
+      const hash = Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,"0")).join("").slice(0,24);
+      const photoId = `${String(shiftId).replace(/[^A-Za-z0-9_-]/g,"")}_${slot}_${hash}`;
+      const ref = cloudDB.collection(V39_PHOTO_COLLECTION).doc(photoId);
+      const existing = await ref.get();
+      if(!existing.exists){
+        await ref.set({data:dataUrl,shiftId:String(shiftId),slot,bytes:dataUrl.length,ts:nowTs(),time:nowText(),by:currentUser?.name || ""});
+      }
+      v39PhotoCache.set(photoId,dataUrl);
+      return V39_PHOTO_PREFIX + photoId;
+    }
+    async function v39ResolvePhoto(value){
+      if(!isPhotoRef(value)) return value || "";
+      const photoId = value.slice(V39_PHOTO_PREFIX.length);
+      if(v39PhotoCache.has(photoId)) return v39PhotoCache.get(photoId);
+      if(!cloudDB) throw new Error("Cần kết nối cloud để xem ảnh");
+      const snap = await cloudDB.collection(V39_PHOTO_COLLECTION).doc(photoId).get();
+      const data = snap.exists ? snap.data()?.data || "" : "";
+      if(data) v39PhotoCache.set(photoId,data);
+      return data;
+    }
+    async function v39StorePhoto(shiftId, slot, dataUrl, label){
       if(!dataUrl) return "";
-      if(hasFirebaseConfig() && (!cloudReady || !cloudStorage)){
-        warnStorage("Cloud đang mất kết nối; ảnh check-in được lưu bằng bản nén dự phòng.");
+      if(!hasFirebaseConfig()) return dataUrl;
+      if(!cloudReady || !cloudDB){
+        warnStorage(`Cloud đang mất kết nối; ảnh ${label} được giữ bằng bản nén trên máy và sẽ tự gửi lại.`);
         return dataUrl;
       }
-      if(!hasFirebaseConfig()) return dataUrl;
-      try{
-        const safeRole = role === "host" ? "host" : "support";
-        const path = `checkins/${shiftId}/${safeRole}_${Date.now()}.jpg`;
-        const photoRef = cloudStorage.ref(path);
-        const snapshot = await photoRef.putString(dataUrl, "data_url");
-        return await snapshot.ref.getDownloadURL();
-      }catch(e){
-        console.error("Không upload được ảnh check-in lên Storage", e);
-        warnStorage(`Chưa tải được ảnh check-in (${e?.code || "lỗi mạng"}); đang giữ bản nén để thử lại.`);
+      try{ return await v39SavePhotoDoc(shiftId, slot, dataUrl); }
+      catch(e){
+        console.error(`Không lưu được ảnh ${label} lên cloud`, e);
+        warnStorage(`Chưa lưu được ảnh ${label} (${e?.code || "lỗi mạng"}); đang giữ bản nén để thử lại.`);
         return dataUrl;
       }
     }
-
+    async function uploadCheckinPhotoToCloud(shiftId, role, dataUrl){
+      return v39StorePhoto(shiftId, role === "host" ? "host-checkin" : "support-checkin", dataUrl, "check-in");
+    }
     async function uploadCheckoutPhotoToCloud(shiftId, role, dataUrl){
-      if(!dataUrl) return "";
-      if(hasFirebaseConfig() && (!cloudReady || !cloudStorage)){
-        warnStorage("Cloud đang mất kết nối; ảnh checkout được lưu bằng bản nén dự phòng.");
-        return dataUrl;
-      }
-      if(!hasFirebaseConfig()) return dataUrl;
-      try{
-        const safeRole = role === "report" ? "report" : (role === "host" ? "host" : "support");
-        const path = `checkouts/${shiftId}/${safeRole}_${Date.now()}.jpg`;
-        const photoRef = cloudStorage.ref(path);
-        const snapshot = await photoRef.putString(dataUrl, "data_url");
-        return await snapshot.ref.getDownloadURL();
-      }catch(e){
-        console.error("Không upload được ảnh checkout lên Storage", e);
-        warnStorage(`Chưa tải được ảnh checkout (${e?.code || "lỗi mạng"}); đang giữ bản nén để thử lại.`);
-        return dataUrl;
-      }
+      const slot = role === "report" ? "report-checkout" : (role === "host" ? "host-checkout" : "support-checkout");
+      return v39StorePhoto(shiftId, slot, dataUrl, "checkout");
     }
 
     async function seedDB(){
@@ -2314,18 +2477,37 @@
       const username = document.getElementById("loginUsername").value.trim();
       const password = document.getElementById("loginPassword").value;
       if(!username || !password) return toast("Nhập tài khoản và mật khẩu");
-      const user = db.accounts.find(a=>a.username.toLowerCase() === username.toLowerCase());
-      if(!user) return toast("Tài khoản không tồn tại");
-      if(user.status !== "active") return toast("Tài khoản đang bị khóa");
-      const hash = await hashPassword(password);
-      if(hash !== user.passwordHash) return toast("Sai mật khẩu");
-      currentUser = user;
-      sessionStorage.setItem(SESSION_KEY, user.id);
+      if(hasFirebaseConfig()){
+        // Máy chủ kiểm tra mật khẩu và cấp phiên đăng nhập; trình duyệt không giữ mã băm mật khẩu.
+        let result;
+        try{
+          const res = await fetch(LIVE_API_BASE + "/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password})});
+          result = {ok:res.ok, data:await res.json().catch(()=>({}))};
+        }catch(e){ return toast("Không kết nối được máy chủ dữ liệu. Kiểm tra mạng rồi thử lại."); }
+        if(!result.ok) return toast(result.data.error || "Không đăng nhập được");
+        try{ localStorage.setItem(LIVE_TOKEN_KEY,result.data.token); localStorage.setItem(LIVE_ACCOUNT_KEY,result.data.account.id); }catch(_){}
+        sessionStorage.setItem(SESSION_KEY, result.data.account.id);
+        await loadDB();
+        await v39PrepareLogStorage();
+        currentUser = db.accounts.find(a=>a.id === result.data.account.id) || result.data.account;
+      }else{
+        const user = db.accounts.find(a=>a.username.toLowerCase() === username.toLowerCase());
+        if(!user) return toast("Tài khoản không tồn tại");
+        if(user.status !== "active") return toast("Tài khoản đang bị khóa");
+        const hash = await hashPassword(password);
+        if(hash !== user.passwordHash) return toast("Sai mật khẩu");
+        currentUser = user;
+        sessionStorage.setItem(SESSION_KEY, user.id);
+      }
       activeView = (isAdmin() || isLeadLive()) ? "dashboard" : "myshift";
       renderApp();
       toast("Đăng nhập thành công");
     }
     function logout(){
+      if(hasFirebaseConfig() && liveToken()) liveFetch("/api/logout",{}).catch(()=>{});
+      try{ localStorage.removeItem(LIVE_TOKEN_KEY); localStorage.removeItem(LIVE_ACCOUNT_KEY); }catch(_){}
+      if(cloudUnsubscribe) cloudUnsubscribe();
+      cloudDB?.close?.(); cloudDB = null; cloudDocRef = null; cloudReady = false;
       sessionStorage.removeItem(SESSION_KEY);
       currentUser = null;
       stopCamera();
@@ -4578,7 +4760,7 @@
         item.checkinTs = nowTs();
         item.checkinTime = nowText();
         item.photo = photoUrl;
-        item.photoStorageMode = /^data:/i.test(photoUrl) ? "compressed_fallback" : "firebase_storage";
+        item.photoStorageMode = /^data:/i.test(photoUrl) ? "compressed_fallback" : "cloud_photo";
         if(liveInput){
           s.shopeeLiveUrl = liveInput;
           s.shopeeLiveId = liveId;
@@ -4752,7 +4934,7 @@
         if(!canReport(s) || !canEmployeeEnterInitialReport(s)) throw new Error("Quyền báo cáo đã thay đổi");
         if(s.reportCheckoutPhoto) throw new Error("Ảnh checkout đã được ghi nhận trước đó");
         s.reportCheckoutPhoto = photoUrl;
-        s.reportCheckoutPhotoStorageMode = /^data:/i.test(photoUrl) ? "compressed_fallback" : "firebase_storage";
+        s.reportCheckoutPhotoStorageMode = /^data:/i.test(photoUrl) ? "compressed_fallback" : "cloud_photo";
         s.reportCheckoutTime = nowText();
         s.reportCheckoutTs = nowTs();
         s.reportCheckoutById = currentUser.id;
@@ -5574,10 +5756,22 @@
       }finally{ endAction(actionKey); }
     }
 
+    // Hiện ảnh: ảnh trong kho Firestore được tải khi mở, ảnh cũ (base64/URL) hiện ngay.
+    async function showPhotoPreview(value){
+      const img = document.getElementById("photoPreview");
+      img.removeAttribute("src");
+      img.alt = isPhotoRef(value) ? "Đang tải ảnh…" : "Ảnh";
+      try{
+        const src = await v39ResolvePhoto(value);
+        if(!src){ img.alt = "Không tìm thấy ảnh"; toast("Không tìm thấy ảnh trên cloud"); return; }
+        img.src = src; img.alt = "Ảnh check-in/checkout";
+      }catch(err){ img.alt = "Chưa tải được ảnh"; toast(`Chưa tải được ảnh (${err?.code || err?.message || "lỗi mạng"})`); }
+    }
+
     function openPhoto(shiftId, role){
       const s = db.shifts.find(x=>x.id===shiftId);
       if(!s || !s[role].photo) return;
-      document.getElementById("photoPreview").src = s[role].photo;
+      showPhotoPreview(s[role].photo);
       document.getElementById("photoTitle").textContent = "Ảnh check-in";
       document.getElementById("photoMeta").textContent = `${roleNameInShift(role)} · ${role==="host"?s.hostName:supportNameLabel(s)} · ${s[role].checkinTime}`;
       openModal("photoModal");
@@ -5588,7 +5782,7 @@
       if(!s || !s.reportCheckoutPhoto) return;
       if(!isAdmin() && !isLeadLive()) return toast("Chỉ Admin hoặc Lead Live được xem ảnh checkout");
       if(isLeadLive() && !canViewShift(s)) return toast("Bạn không phụ trách shop này");
-      document.getElementById("photoPreview").src = s.reportCheckoutPhoto;
+      showPhotoPreview(s.reportCheckoutPhoto);
       document.getElementById("photoTitle").textContent = "Ảnh checkout báo cáo";
       document.getElementById("photoMeta").textContent = `${s.reportCheckoutByName || "-"} · ${s.reportCheckoutTime || "-"} · ${shiftLabel(s)}`;
       openModal("photoModal");
@@ -5673,7 +5867,7 @@
           r.atc || 0,
           r.comments || 0,
           r.avgWatch || "",
-          (isAdmin() || isLeadLive()) ? (s.reportCheckoutPhoto || "") : "",
+          (isAdmin() || isLeadLive()) ? (s.reportCheckoutPhoto ? (/^https?:/i.test(s.reportCheckoutPhoto) ? s.reportCheckoutPhoto : "Có ảnh (xem trên web)") : "") : "",
           st.label
         ];
       });
@@ -6150,6 +6344,10 @@
     async function v38SaveMain(requestedBase,requestedLocal){
       const localMain=v38MainData(requestedLocal);
       const baseMain=requestedBase?v38MainData(requestedBase):null;
+      // Chỉ Admin/Lead Live quản lý tài khoản: máy nhân viên luôn giữ nguyên danh sách tài khoản của máy chủ
+      // (máy chủ cũng từ chối nếu nhân viên gửi danh sách tài khoản khác).
+      const canEditAccounts=isAdmin()||isLeadLive();
+      if(!canEditAccounts&&baseMain) localMain.accounts=v38Clone(baseMain.accounts);
       // V39: tài khoản/cấu hình không đổi thì không tranh ghi document chung với hàng trăm máy khác.
       const comparable=main=>{const copy={...main};delete copy.schemaVersion;return copy;};
       if(baseMain&&deepEqual(comparable(localMain),comparable(baseMain))) return localMain;
@@ -6161,6 +6359,7 @@
         const remoteMain=rawRemote?v38MainData(rawRemote):null;
         const next=!remoteMain||!baseMain?v38Clone(localMain):threeWayMerge(baseMain,localMain,remoteMain);
         applyOperationalBounds(next);
+        if(!canEditAccounts&&remoteMain) next.accounts=v38Clone(remoteMain.accounts);
         const bytes=v38JsonBytes({data:next});
         if(bytes>V38_MAX_MAIN_BYTES) throw new Error(`Dữ liệu cấu hình chính quá lớn (${Math.round(bytes/1024)}KB). Hệ thống không ghi đè để tránh lỗi Firestore.`);
         transaction.set(cloudDocRef,{
@@ -6231,7 +6430,7 @@
     let photoRetryRunning = false;
     let photoRetryAfter = 0;
     async function retryPendingPhotos(){
-      if(photoRetryRunning || !cloudReady || !cloudStorage || Date.now()<photoRetryAfter) return;
+      if(photoRetryRunning || !cloudReady || !cloudDB || Date.now()<photoRetryAfter) return;
       photoRetryRunning=true;
       photoRetryAfter=Date.now()+60000;
       try{
@@ -6247,16 +6446,13 @@
             const source=slot.role ? shift[slot.role] : shift;
             const photo=source?.[slot.field];
             if(typeof photo!=="string" || !photo.startsWith("data:image/")) continue;
-            // A content hash makes retries reuse the same object after a lost response.
-            const hash=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(photo))),b=>b.toString(16).padStart(2,"0")).join("");
-            const ref=cloudStorage.ref(`${slot.kind}/${shift.id}/${slot.role || "report"}_${hash}.jpg`);
-            const uploaded=await ref.putString(photo,"data_url");
-            const url=await uploaded.ref.getDownloadURL();
+            // Mã ảnh tính từ nội dung nên thử lại nhiều lần vẫn chỉ tạo một ảnh trên máy chủ.
+            const url=await v39SavePhotoDoc(shift.id,`${slot.role || "report"}-${slot.kind === "checkins" ? "checkin" : "checkout"}`,photo);
             const current=db.shifts.find(s=>String(s.id)===String(shift.id));
             const target=slot.role ? current?.[slot.role] : current;
             if(target?.[slot.field]!==photo) continue;
             target[slot.field]=url;
-            target[slot.mode]="firebase_storage";
+            target[slot.mode]="cloud_photo";
             await saveDB({immediate:true});
           }
         }
@@ -6307,6 +6503,7 @@
           if(baseShift) v38ReplaceEnvelopeInDb(synced,v38ShiftEnvelope(requestedBase,baseShift)); else v38RemoveShiftFromDb(synced,shiftId);
         }
         applyOperationalBounds(synced);
+        normalizeAccountRecords(synced.accounts);
         const newerLocal=v38Clone(db);
         db=threeWayMerge(requestedLocal,newerLocal,synced);
         // Giữ nguyên bản trên máy của các ca chưa lưu được (không để bị thay bằng bản cũ).
@@ -6372,6 +6569,7 @@
           }else{
             const preservedEnvelopes=(lastSyncedDb.shifts || []).map(shift=>v38ShiftEnvelope(lastSyncedDb,shift));
             lastSyncedDb=v38Hydrate(incomingMain,preservedEnvelopes);
+            normalizeAccountRecords(lastSyncedDb.accounts);
           }
           applyDbDefaults();
           const userId=sessionStorage.getItem(SESSION_KEY); currentUser=db.accounts.find(a=>a.id===userId)||null;
@@ -7033,6 +7231,15 @@
     async function init(){
       enhanceAccessibility();
       await v39PreloadIdbCache();
+      if(hasFirebaseConfig() && !liveToken()){
+        // Chưa đăng nhập: chỉ hiện trang đăng nhập, chưa tải hay tạo dữ liệu nào.
+        db = {accounts:[],shifts:[],notes:[],histories:[],dataLogs:[],reportEditRequests:[],lateReportRequests:[],channels:[],settings:{}};
+        applyDbDefaults(); currentUser = null; renderApp();
+        return;
+      }
+      if(liveToken() && !sessionStorage.getItem(SESSION_KEY)){
+        try{ sessionStorage.setItem(SESSION_KEY, localStorage.getItem(LIVE_ACCOUNT_KEY) || ""); }catch(_){}
+      }
       await loadDB();
       await v39PrepareLogStorage();
       renderApp();
