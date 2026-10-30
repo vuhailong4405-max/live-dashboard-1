@@ -578,7 +578,10 @@
     .modal-head h3{margin:0;font-size:var(--fs-xl);font-weight:700;color:var(--ds-primary-hover)}
     .close{flex:0 0 auto;width:40px;height:40px;min-height:40px;padding:0;border-radius:var(--r-pill);background:var(--ds-blush);color:var(--ds-primary-hover);border:0;font-size:20px;line-height:1}
     .close:hover{background:var(--ds-blush-2);color:var(--ds-primary-hover)}
-    .modal .actions{position:sticky;bottom:calc(var(--sp-6) * -1);background:var(--ds-surface);margin:var(--sp-5) calc(var(--sp-6) * -1) calc(var(--sp-6) * -1);padding:var(--sp-4) var(--sp-6);border-top:1px solid var(--ds-border);justify-content:flex-end}
+    /* Chỉ hàng nút cuối cùng của cửa sổ được ghim ở đáy; hàng nút bên trong nội dung cuộn bình thường. */
+    .modal > .actions:last-child{position:sticky;bottom:calc(var(--sp-6) * -1);z-index:2;background:var(--ds-surface);margin:var(--sp-5) calc(var(--sp-6) * -1) calc(var(--sp-6) * -1);padding:var(--sp-4) var(--sp-6);border-top:1px solid var(--ds-border);justify-content:flex-end}
+    .modal .warning-note .actions{position:static;margin:10px 0 0;padding:0;border:0;background:none}
+    #shopeeSyncNotice{font-size:var(--fs-xs);margin-top:0;margin-bottom:var(--sp-4)}
     video,canvas{border-radius:var(--r-lg);background:var(--ds-primary-hover);border:1px solid var(--ds-border)}
 
     /* ---------- Thông báo nổi ---------- */
@@ -718,8 +721,8 @@
       .modal-backdrop{align-items:flex-end;padding:0}
       .modal{width:100%;max-height:94svh;border-radius:var(--r-xl) var(--r-xl) 0 0;padding:0 var(--sp-4) var(--sp-4)}
       .modal-head{margin:0 calc(var(--sp-4) * -1) var(--sp-4);padding:var(--sp-4)}
-      .modal .actions{margin:var(--sp-4) calc(var(--sp-4) * -1) calc(var(--sp-4) * -1);padding:var(--sp-3) var(--sp-4) calc(var(--sp-3) + env(safe-area-inset-bottom))}
-      .modal .actions button{flex:1 1 auto}
+      .modal > .actions:last-child{margin:var(--sp-4) calc(var(--sp-4) * -1) calc(var(--sp-4) * -1);padding:var(--sp-3) var(--sp-4) calc(var(--sp-3) + env(safe-area-inset-bottom))}
+      .modal > .actions:last-child button{flex:1 1 auto}
       .toast{bottom:calc(var(--sp-4) + env(safe-area-inset-bottom))}
     }
 
@@ -1398,7 +1401,7 @@
     let lastStorageToastAt = 0;
     let localSnapshotSaved = true;
     let deferredCloudSnapshots = [];
-    function readLocalSnapshot(raw=localStorage.getItem(DB_KEY)){
+    function readLocalSnapshot(raw=cacheRaw()){
       if(!raw) return null;
       const data=JSON.parse(raw), state=data.__goobySync;
       delete data.__goobySync;
@@ -1439,7 +1442,8 @@
       if(!video || video.readyState < 2 || !video.videoWidth) throw new Error("Camera chưa sẵn sàng, vui lòng chờ vài giây rồi chụp lại");
       const sourceW = video.videoWidth || 640;
       const sourceH = video.videoHeight || 480;
-      const scale = Math.min(1,960/sourceW,720/sourceH);
+      // 800×600, JPEG 0.6: đủ rõ để xác nhận, nhẹ để không làm phình dữ liệu ca khi Storage chưa nhận ảnh.
+      const scale = Math.min(1,800/sourceW,600/sourceH);
       const w = Math.max(1,Math.round(sourceW*scale));
       const h = Math.max(1,Math.round(sourceH*scale));
       canvas.width=w; canvas.height=h;
@@ -1448,7 +1452,7 @@
       ctx.fillStyle="rgba(0,0,0,.58)"; ctx.fillRect(0,h-48,w,48);
       ctx.fillStyle="#fff"; ctx.font=Math.max(16,Math.round(w/34))+"px Arial";
       ctx.fillText(label+nowText(),16,h-18);
-      return canvas.toDataURL("image/jpeg",.65);
+      return canvas.toDataURL("image/jpeg",.6);
     }
     function clockText(){ return new Date().toLocaleString("vi-VN",{hour:"2-digit",minute:"2-digit",second:"2-digit",day:"2-digit",month:"2-digit",year:"numeric"}); }
     function money(n){
@@ -1683,7 +1687,7 @@
     }
 
     async function loadLocalDB(){
-      const raw = localStorage.getItem(DB_KEY);
+      const raw = cacheRaw();
       if(!raw){
         await seedDB();
       }else{
@@ -1702,18 +1706,80 @@
       return cloudReady ? "Cloud Firestore: đã đồng bộ nhiều máy" : "LocalStorage: dữ liệu chỉ lưu trên máy này";
     }
 
+    // ---------- Bộ nhớ đệm trên máy: LocalStorage, tự chuyển sang IndexedDB khi dữ liệu lớn ----------
+    // LocalStorage chỉ chứa được khoảng 5MB. Khi bản lưu vượt ngưỡng (hoặc bị báo đầy), toàn bộ bản lưu
+    // chuyển vào IndexedDB (dung lượng hàng trăm MB) và LocalStorage chỉ giữ một con trỏ nhỏ.
+    const V39_CACHE_POINTER = '{"__goobyIdb":true}';
+    const V39_LOCALSTORAGE_LIMIT = 3000000;
+    const V39_IDB_NAME = "gooby-cache", V39_IDB_STORE = "kv";
+    let v39IdbRaw = null;
+    let v39IdbPendingJson = null;
+    let v39IdbWriting = false;
+    function v39HasIdb(){ try{ return typeof indexedDB !== "undefined" && !!indexedDB; }catch(_){ return false; } }
+    function v39IdbRequest(mode, run){
+      return new Promise((resolve,reject)=>{
+        const open = indexedDB.open(V39_IDB_NAME,1);
+        open.onupgradeneeded = ()=>open.result.createObjectStore(V39_IDB_STORE);
+        open.onerror = ()=>reject(open.error);
+        open.onsuccess = ()=>{
+          const tx = open.result.transaction(V39_IDB_STORE,mode);
+          const req = run(tx.objectStore(V39_IDB_STORE));
+          tx.oncomplete = ()=>{ open.result.close(); resolve(req?.result ?? null); };
+          tx.onerror = ()=>{ open.result.close(); reject(tx.error); };
+        };
+      });
+    }
+    function cacheRaw(){
+      const raw = localStorage.getItem(DB_KEY);
+      return raw === V39_CACHE_POINTER ? v39IdbRaw : raw;
+    }
+    async function v39PreloadIdbCache(){
+      try{
+        if(localStorage.getItem(DB_KEY) === V39_CACHE_POINTER && v39HasIdb()) v39IdbRaw = await v39IdbRequest("readonly",store=>store.get(DB_KEY));
+      }catch(err){ console.error("Không đọc được bộ nhớ IndexedDB",err); }
+    }
+    // Chỉ ghi bản mới nhất; nhiều lần lưu liên tiếp gộp thành một lần ghi.
+    function v39QueueIdbWrite(json){
+      v39IdbPendingJson = json;
+      if(v39IdbWriting) return;
+      v39IdbWriting = true;
+      (async()=>{
+        while(v39IdbPendingJson !== null){
+          const next = v39IdbPendingJson; v39IdbPendingJson = null;
+          try{ await v39IdbRequest("readwrite",store=>store.put(next,DB_KEY)); localSnapshotSaved = true; }
+          catch(err){
+            localSnapshotSaved = false;
+            console.error("Không lưu được IndexedDB",err);
+            warnStorage("Bộ nhớ trình duyệt đã đầy. Dữ liệu vẫn được giữ trên màn hình và sẽ thử lưu lên cloud.");
+          }
+        }
+        v39IdbWriting = false;
+      })();
+    }
+
     function persistLocalSnapshot(){
       if(!db) return true;
-      try{
-        localStorage.setItem(DB_KEY, JSON.stringify({...db,__goobySync:{dirty:localDirty,base:localDirty ? lastSyncedDb : null}}));
-        localSnapshotSaved = true;
-        return true;
-      }catch(e){
-        localSnapshotSaved = false;
-        console.error("Không lưu được LocalStorage", e);
-        warnStorage("Bộ nhớ trình duyệt đã đầy. Dữ liệu vẫn được giữ trên màn hình và sẽ thử lưu lên cloud.");
-        return false;
+      const json = JSON.stringify({...db,__goobySync:{dirty:localDirty,base:localDirty ? lastSyncedDb : null}});
+      if(json.length < V39_LOCALSTORAGE_LIMIT || !v39HasIdb()){
+        try{
+          localStorage.setItem(DB_KEY, json);
+          v39IdbRaw = null;
+          localSnapshotSaved = true;
+          return true;
+        }catch(e){
+          if(!v39HasIdb()){
+            localSnapshotSaved = false;
+            console.error("Không lưu được LocalStorage", e);
+            warnStorage("Bộ nhớ trình duyệt đã đầy. Dữ liệu vẫn được giữ trên màn hình và sẽ thử lưu lên cloud.");
+            return false;
+          }
+        }
       }
+      // Dữ liệu lớn: lưu vào IndexedDB, LocalStorage chỉ giữ con trỏ.
+      v39IdbRaw = json;
+      try{ localStorage.removeItem?.(DB_KEY); localStorage.setItem(DB_KEY, V39_CACHE_POINTER); }catch(_){}
+      v39QueueIdbWrite(json);
+      return true;
     }
 
     function startCloudRealtimeSync(){
@@ -1836,7 +1902,7 @@
             localDirty = false;
             persistLocalSnapshot();
           }else{
-            const raw = localStorage.getItem(DB_KEY);
+            const raw = cacheRaw();
             if(raw){
               try{ db = readLocalSnapshot(raw).data; }
               catch(e){ await seedDB(); }
@@ -5682,7 +5748,7 @@
     },1000);
 
     window.addEventListener("storage", e=>{
-      if(e.key!==DB_KEY || !e.newValue || cloudReady) return;
+      if(e.key!==DB_KEY || !e.newValue || e.newValue===V39_CACHE_POINTER || cloudReady) return;
       try{
         const incoming=readLocalSnapshot(e.newValue);
         const previous=e.oldValue ? readLocalSnapshot(e.oldValue).data : lastSyncedDb;
@@ -6022,7 +6088,7 @@
             if(!cached) v39MarkDeviceRecovered();
             persistLocalSnapshot();
           }else{
-            const raw = localStorage.getItem(DB_KEY);
+            const raw = cacheRaw();
             if(raw){ try{db=readLocalSnapshot(raw).data;}catch(e){await seedDB();} } else await seedDB();
             applyDbDefaults();
             await saveDB({immediate:true});
@@ -6700,7 +6766,8 @@
         const snap = await cloudDocRef.get({source:"server"});
         const payload = snap.exists ? snap.data() || {} : {};
         if(!payload.data) return;
-        if(!payload.logsInSubcollection){
+        // Chạy khi chưa tách nhật ký, hoặc khi tài liệu chung vẫn còn nhật ký sót lại (máy bản cũ ghi thêm).
+        if(!payload.logsInSubcollection || (payload.data.dataLogs || []).length){
           const logsRef = cloudDocRef.collection(CLOUD_EVENT_SUBCOLLECTION);
           const rows = (payload.data.dataLogs || []).filter(row=>row?.id);
           for(let i=0; i<rows.length; i+=400){
@@ -6713,7 +6780,7 @@
           await cloudDB.runTransaction(async transaction=>{
             const current = await transaction.get(cloudDocRef);
             const data = current.exists ? current.data() || {} : {};
-            if(data.logsInSubcollection || !data.data) return;
+            if(!data.data || (data.logsInSubcollection && !(data.data.dataLogs || []).length)) return;
             previous = v38Clone(data.data);
             const nextData = v38Clone(data.data);
             // Dòng nhật ký mới phát sinh trong lúc chép cũng được chép trong cùng transaction.
@@ -6965,6 +7032,7 @@
 
     async function init(){
       enhanceAccessibility();
+      await v39PreloadIdbCache();
       await loadDB();
       await v39PrepareLogStorage();
       renderApp();
