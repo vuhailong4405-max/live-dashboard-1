@@ -6285,11 +6285,15 @@
             applyDbDefaults();
             lastSyncedDb = v38Clone(db);
             localDirty = false;
-            if(cached?.dirty){
+            if(cached && v39NeedsDeviceRecovery()){
+              db = await v39RecoverDeviceData(cached.data,cached.base);
+              localDirty = !deepEqual(db,lastSyncedDb);
+            }else if(cached?.dirty){
               db=cached.base ? threeWayMerge(cached.base,cached.data,db) : mergeOfflineDb(cached.data,db);
               localDirty=!deepEqual(db,lastSyncedDb);
               applyDbDefaults();
             }
+            if(!cached) v39MarkDeviceRecovered();
             persistLocalSnapshot();
           }else{
             const raw = localStorage.getItem(DB_KEY);
@@ -6326,8 +6330,15 @@
             if(!loadedIds.has(String(shift.id))&&!v39InShiftWindow(shift)) envs.push(v38ShiftEnvelope(lastSyncedDb,shift));
           }
           const remote=v38Hydrate(main,envs);
-          db=lastSyncedDb ? threeWayMerge(lastSyncedDb,db,remote) : (localDirty ? mergeOfflineDb(db,remote) : remote);
-          lastSyncedDb=remote;
+          if(db && v39NeedsDeviceRecovery()){
+            // Máy này đã chạy "chỉ lưu trên máy": khôi phục bằng cách gộp bổ sung, không xóa gì.
+            const local=v38Clone(db), previousBase=v38Clone(lastSyncedDb);
+            db=remote; applyDbDefaults(); lastSyncedDb=v38Clone(db);
+            db=await v39RecoverDeviceData(local,previousBase);
+          }else{
+            db=lastSyncedDb ? threeWayMerge(lastSyncedDb,db,remote) : (localDirty ? mergeOfflineDb(db,remote) : remote);
+            lastSyncedDb=remote;
+          }
           localDirty=true;
           applyDbDefaults();
           persistLocalSnapshot();
@@ -6406,8 +6417,9 @@
         previous=remoteEnv;
         let next=!remoteEnv||!baseEnv?v38Clone(localEnv):threeWayMerge(baseEnv,localEnv,remoteEnv);
         if(remoteEnv&&!baseEnv){
-          // Không có bản gốc để so (ca chưa từng tải trên máy này): giữ thông tin ca của máy,
-          // nhưng không làm mất ghi chú/lịch sử người khác đã thêm trên server.
+          // Không có bản gốc để so (ví dụ hai máy cùng khôi phục một ca): gộp bổ sung từng trường,
+          // giữ dữ liệu của máy nhưng không xóa check-in/báo cáo/ghi chú máy khác vừa đưa lên.
+          next.shift=v39FillMerge(localEnv.shift,remoteEnv.shift);
           for(const key of ["notes","histories","reportEditRequests","lateReportRequests"]) next[key]=mergeEntityArrays([],localEnv[key]||[],remoteEnv[key]||[]);
         }
         next=v38ProtectWorkerMetrics(baseEnv,localEnv,remoteEnv,next);
@@ -6500,6 +6512,7 @@
         localDirty=!deepEqual(db,synced);
         lastCloudSaveError="";
         v39SaveFailures=0;
+        if(v39RecoveryPending) v39MarkDeviceRecovered();
         persistLocalSnapshot();
         if(localDirty) scheduleCloudRetry(250);
         return {ok:true,changedShiftCount:changedIds.length};
@@ -6719,6 +6732,110 @@
       toast(all ? "Đang tải toàn bộ lịch sử ca live…" : `Đang tải thêm ca từ ${v39ShiftWindowFrom.split("-").reverse().join("/")}…`);
       renderContent();
     }
+    // ---------- V39: khôi phục dữ liệu chỉ lưu trên từng máy ----------
+    // Khi Firestore từ chối quyền, mỗi máy chỉ lưu trong trình duyệt của nó. Lần đầu máy kết nối lại
+    // được cloud: sao lưu nguyên bộ nhớ máy lên liveDashboardDeviceBackups, rồi gộp BỔ SUNG các ca
+    // trong máy với cloud (không xóa ca/ghi chú nào), sau đó mới coi máy là đã đồng bộ.
+    const V39_DEVICE_RECOVERED_KEY = "gooby_v39_device_recovered";
+    const V39_DEVICE_ID_KEY = "gooby_v39_device_id";
+    const V39_DEVICE_BACKUP_COLLECTION = "liveDashboardDeviceBackups";
+    const V39_BACKUP_CHUNK_CHARS = 250000;
+    let v39RecoveryPending = false;
+    function v39NeedsDeviceRecovery(){
+      try{ return !localStorage.getItem(V39_DEVICE_RECOVERED_KEY); }catch(_){ return true; }
+    }
+    function v39MarkDeviceRecovered(){
+      try{ localStorage.setItem(V39_DEVICE_RECOVERED_KEY,String(Date.now())); }catch(_){}
+      v39RecoveryPending = false;
+    }
+    function v39DeviceId(){
+      try{
+        let deviceId = localStorage.getItem(V39_DEVICE_ID_KEY);
+        if(!deviceId){ deviceId = id(); localStorage.setItem(V39_DEVICE_ID_KEY,deviceId); }
+        return deviceId;
+      }catch(_){ return "unknown"; }
+    }
+    // Ghi nguyên văn bộ nhớ trình duyệt lên cloud, chia nhỏ để vừa giới hạn 1MB/document.
+    async function v39BackupDeviceCache(local){
+      try{
+        const raw = JSON.stringify(local || {});
+        const ref = cloudDB.collection(V39_DEVICE_BACKUP_COLLECTION).doc(`${v39DeviceId()}_${Date.now()}`);
+        const chunks = Math.ceil(raw.length / V39_BACKUP_CHUNK_CHARS) || 1;
+        for(let i=0; i<chunks; i++){
+          await ref.collection("chunks").doc(String(i).padStart(4,"0")).set({index:i,text:raw.slice(i*V39_BACKUP_CHUNK_CHARS,(i+1)*V39_BACKUP_CHUNK_CHARS)});
+        }
+        await ref.set({
+          deviceId:v39DeviceId(), chunks, chars:raw.length,
+          shifts:(local?.shifts || []).length, notes:(local?.notes || []).length, accounts:(local?.accounts || []).length,
+          userName:currentUser?.name || "", userAgent:String(typeof navigator !== "undefined" ? navigator.userAgent : "").slice(0,200),
+          createdAt:firebase.firestore.FieldValue.serverTimestamp(), createdAtText:nowText(), ts:nowTs()
+        });
+        return true;
+      }catch(err){
+        console.error("Chưa sao lưu được bộ nhớ máy lên cloud",err);
+        return false;
+      }
+    }
+    // Gộp bổ sung: giá trị có trong máy được giữ, chỗ máy để trống thì lấy của cloud.
+    function v39FillMerge(local,remote){
+      if(isPlainObject(local) && isPlainObject(remote)){
+        const out = {};
+        new Set([...Object.keys(remote),...Object.keys(local)]).forEach(key=>{ out[key] = v39FillMerge(local[key],remote[key]); });
+        return out;
+      }
+      if(Array.isArray(local) && Array.isArray(remote)){
+        if(isEntityArray([local,remote])) return mergeEntityArrays([],local,remote).map(row=>{
+          const r = remote.find(x=>String(x.id) === String(row.id)), l = local.find(x=>String(x.id) === String(row.id));
+          return l && r ? v39FillMerge(l,r) : row;
+        });
+        return cloneData(local.length ? local : remote);
+      }
+      return local === undefined || local === null || local === "" ? cloneData(remote) : cloneData(local);
+    }
+    async function v39RecoverDeviceData(local,base=null){
+      local = v38Clone(local || {});
+      const backedUp = await v39BackupDeviceCache(local);
+      const out = v38Clone(db);
+      // Ca có trong máy nhưng ngoài khoảng đã tải: đọc bản trên cloud (nếu có) để gộp đúng.
+      const loaded = new Set((out.shifts || []).map(s=>String(s.id)));
+      for(const shift of local.shifts || []){
+        if(!shift?.id || loaded.has(String(shift.id))) continue;
+        const snap = await v38ShiftRef(shift.id).get({source:"server"});
+        const env = snap.exists ? v38EnvelopeFromDoc(snap) : null;
+        if(env){ v38ReplaceEnvelopeInDb(out,env); v38ReplaceEnvelopeInDb(lastSyncedDb,env); loaded.add(String(shift.id)); }
+      }
+      for(const shift of local.shifts || []){
+        if(!shift?.id) continue;
+        const localEnv = v38ShiftEnvelope(local,shift);
+        const remoteShift = (out.shifts || []).find(s=>String(s.id) === String(shift.id));
+        if(!remoteShift){ v38ReplaceEnvelopeInDb(out,localEnv); continue; }
+        const remoteEnv = v38ShiftEnvelope(out,remoteShift);
+        const baseShift = (base?.shifts || []).find(s=>String(s.id) === String(shift.id));
+        if(baseShift){
+          // Có bản đã đồng bộ trước đó: gộp ba chiều chính xác như lúc lưu bình thường.
+          const baseEnv = v38ShiftEnvelope(base,baseShift);
+          v38ReplaceEnvelopeInDb(out,v38ProtectWorkerMetrics(baseEnv,localEnv,remoteEnv,threeWayMerge(baseEnv,localEnv,remoteEnv)));
+          continue;
+        }
+        const merged = {shift:v39FillMerge(localEnv.shift,remoteEnv.shift)};
+        for(const key of ["notes","histories","reportEditRequests","lateReportRequests"]) merged[key] = mergeEntityArrays([],localEnv[key] || [],remoteEnv[key] || []);
+        v38ReplaceEnvelopeInDb(out,merged);
+      }
+      // Tài khoản/cấu hình: cloud là bản chuẩn; chỉ thêm tài khoản/kênh/ghi chú chung mà cloud chưa có.
+      const remoteAccountIds = new Set((out.accounts || []).map(a=>String(a.id)));
+      out.accounts = [...(out.accounts || []),...(local.accounts || []).filter(a=>a?.id && !remoteAccountIds.has(String(a.id))).map(v38Clone)];
+      out.channels = [...new Set([...(out.channels || []),...(local.channels || [])])];
+      for(const key of ["notes","histories","reportEditRequests","lateReportRequests"]){
+        const ids = new Set((out[key] || []).map(x=>String(x?.id)));
+        out[key] = [...(out[key] || []),...(local[key] || []).filter(x=>x?.id && !x.shiftId && !ids.has(String(x.id))).map(v38Clone)];
+      }
+      v39RememberLogs(local.dataLogs);
+      v39RecoveryPending = true;
+      const added = (local.shifts || []).filter(s=>s?.id && !(db.shifts || []).some(r=>String(r.id) === String(s.id))).length;
+      console.info(`V39 khôi phục thiết bị: ${(local.shifts || []).length} ca trong máy, ${added} ca chưa có trên cloud được đưa lên. Sao lưu máy: ${backedUp ? "đã lưu" : "chưa lưu được"}.`);
+      return out;
+    }
+
     function shiftWindowNotice(){
       if(!cloudReady) return "";
       if(!v39ShiftWindowFrom) return `<div class="shift-window-note">Đang hiển thị toàn bộ lịch sử ca live.</div>`;
