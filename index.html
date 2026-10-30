@@ -6818,6 +6818,15 @@
     async function v39RecoverDeviceData(local,base=null){
       local = v38Clone(local || {});
       const backedUp = await v39BackupDeviceCache(local);
+      const out = await v39MergeIntoCloudData(local,base,false);
+      v39RecoveryPending = true;
+      const added = (local.shifts || []).filter(s=>s?.id && !(db.shifts || []).some(r=>String(r.id) === String(s.id))).length;
+      console.info(`V39 khôi phục thiết bị: ${(local.shifts || []).length} ca trong máy, ${added} ca chưa có trên cloud được đưa lên. Sao lưu máy: ${backedUp ? "đã lưu" : "chưa lưu được"}.`);
+      return out;
+    }
+    // Gộp dữ liệu (bộ nhớ máy hoặc bản sao lưu) vào dữ liệu cloud hiện tại (db), chỉ thêm/bổ sung.
+    // preferCloud=true: trùng trường thì giữ cloud (dùng khi đưa bản sao lưu cũ lên).
+    async function v39MergeIntoCloudData(local,base,preferCloud){
       const out = v38Clone(db);
       // Ca có trong máy nhưng ngoài khoảng đã tải: đọc bản trên cloud (nếu có) để gộp đúng.
       const loaded = new Set((out.shifts || []).map(s=>String(s.id)));
@@ -6840,23 +6849,71 @@
           v38ReplaceEnvelopeInDb(out,v38ProtectWorkerMetrics(baseEnv,localEnv,remoteEnv,threeWayMerge(baseEnv,localEnv,remoteEnv)));
           continue;
         }
-        const merged = {shift:v39FillMerge(localEnv.shift,remoteEnv.shift)};
-        for(const key of ["notes","histories","reportEditRequests","lateReportRequests"]) merged[key] = mergeEntityArrays([],localEnv[key] || [],remoteEnv[key] || []);
+        const merged = {shift:preferCloud ? v39FillMerge(remoteEnv.shift,localEnv.shift) : v39FillMerge(localEnv.shift,remoteEnv.shift)};
+        for(const key of ["notes","histories","reportEditRequests","lateReportRequests"]) merged[key] = preferCloud ? mergeEntityArrays([],remoteEnv[key] || [],localEnv[key] || []) : mergeEntityArrays([],localEnv[key] || [],remoteEnv[key] || []);
         v38ReplaceEnvelopeInDb(out,merged);
       }
-      // Tài khoản/cấu hình: cloud là bản chuẩn; chỉ thêm tài khoản/kênh/ghi chú chung mà cloud chưa có.
-      const remoteAccountIds = new Set((out.accounts || []).map(a=>String(a.id)));
-      out.accounts = [...(out.accounts || []),...(local.accounts || []).filter(a=>a?.id && !remoteAccountIds.has(String(a.id))).map(v38Clone)];
+      // Tài khoản: cloud là bản chuẩn và luôn được đồng bộ; không tự thêm lại tài khoản cloud không có
+      // (có thể Admin đã xóa, hoặc là tài khoản thử). Chỉ thêm kênh bán và ghi chú chung còn thiếu.
       out.channels = [...new Set([...(out.channels || []),...(local.channels || [])])];
       for(const key of ["notes","histories","reportEditRequests","lateReportRequests"]){
         const ids = new Set((out[key] || []).map(x=>String(x?.id)));
         out[key] = [...(out[key] || []),...(local[key] || []).filter(x=>x?.id && !x.shiftId && !ids.has(String(x.id))).map(v38Clone)];
       }
       v39RememberLogs(local.dataLogs);
-      v39RecoveryPending = true;
-      const added = (local.shifts || []).filter(s=>s?.id && !(db.shifts || []).some(r=>String(r.id) === String(s.id))).length;
-      console.info(`V39 khôi phục thiết bị: ${(local.shifts || []).length} ca trong máy, ${added} ca chưa có trên cloud được đưa lên. Sao lưu máy: ${backedUp ? "đã lưu" : "chưa lưu được"}.`);
       return out;
+    }
+
+    // ---------- Admin: đưa bản sao lưu từ thiết bị lên cloud ----------
+    let v39DeviceBackupRows = null;
+    let v39DeviceBackupLoading = false;
+    async function v39LoadDeviceBackups(){
+      if(!isAdmin()) return toast("Chỉ Admin được xem bản sao lưu thiết bị");
+      if(!cloudReady || !cloudDB) return toast("Cần kết nối cloud để xem bản sao lưu thiết bị");
+      v39DeviceBackupLoading = true; renderBackup();
+      try{
+        const snap = await cloudDB.collection(V39_DEVICE_BACKUP_COLLECTION).orderBy("ts","desc").limit(100).get();
+        v39DeviceBackupRows = snap.docs.map(doc=>({id:doc.id,...doc.data()}));
+      }catch(err){
+        console.error("Không tải được bản sao lưu thiết bị",err);
+        v39DeviceBackupRows = [];
+        toast(`Không tải được bản sao lưu thiết bị (${err?.code || err?.message || "lỗi mạng"})`);
+      }finally{ v39DeviceBackupLoading = false; renderBackup(); }
+    }
+    async function v39ReadDeviceBackup(backupId){
+      const chunks = await cloudDB.collection(V39_DEVICE_BACKUP_COLLECTION).doc(backupId).collection("chunks").get();
+      const data = JSON.parse(chunks.docs.sort((a,b)=>a.id.localeCompare(b.id)).map(doc=>doc.data().text || "").join(""));
+      delete data.__goobySync;
+      return data;
+    }
+    async function v39DownloadDeviceBackup(backupId){
+      if(!isAdmin()) return;
+      try{
+        const data = await v39ReadDeviceBackup(backupId);
+        (data.accounts || []).forEach(account=>delete account.passwordHash);
+        v39DownloadJson(`gooby-sao-luu-thiet-bi-${backupId}.json`,data);
+      }catch(err){ toast(`Không đọc được bản sao lưu (${err?.code || err?.message})`); }
+    }
+    async function v39RestoreDeviceBackup(backupId){
+      if(!isAdmin()) return toast("Chỉ Admin được khôi phục dữ liệu");
+      const row = (v39DeviceBackupRows || []).find(r=>r.id === backupId);
+      if(!row) return;
+      if(!confirm(`Đưa ${row.shifts} ca trong bản sao lưu lúc ${row.createdAtText} (${row.userName || "chưa đăng nhập"}) lên cloud?\n\nChỉ thêm ca còn thiếu và bổ sung thông tin còn trống. Không xóa gì; trùng thông tin thì giữ bản đang có trên cloud. Tài khoản không được thêm lại.`)) return;
+      const actionKey = `restore-device:${backupId}`;
+      if(!beginAction(actionKey)) return;
+      try{
+        const data = await v39ReadDeviceBackup(backupId);
+        const before = db.shifts.length;
+        db = await v39MergeIntoCloudData(data,null,true);
+        applyDbDefaults();
+        recordDatabaseEvent({module:"backup",action:"Đưa bản sao lưu thiết bị lên cloud",details:{backupId,backupTime:row.createdAtText,backupUser:row.userName,shiftsInBackup:row.shifts,shiftsAdded:db.shifts.length - before}});
+        const result = await saveDB({immediate:true});
+        toast(result?.ok ? `Đã đưa lên cloud: thêm ${db.shifts.length - before} ca` : "Đã gộp trên máy, đang chờ đồng bộ cloud");
+        renderContent();
+      }catch(err){
+        console.error("Không khôi phục được bản sao lưu thiết bị",err);
+        toast(`Không khôi phục được (${err?.code || err?.message})`);
+      }finally{ endAction(actionKey); }
     }
 
     function shiftWindowNotice(){
@@ -7094,6 +7151,29 @@
               <td class="v39-row-actions">
                 <button class="small secondary" onclick="v39DownloadRevision('${escapeAttr(rev.id)}')">Tải JSON</button>
                 ${rev.kind === "shift" ? `<button class="small" onclick="v39RestoreShiftRevision('${escapeAttr(rev.id)}')">Khôi phục ca</button>` : ""}
+              </td>
+            </tr>`).join("")}
+          </tbody>
+        </table></div>`)}
+        <div class="section-head v39-device-backups-head">
+          <div>
+            <h2>Bản sao lưu từ thiết bị</h2>
+            <p>Mỗi máy từng chỉ lưu dữ liệu trên trình duyệt sẽ tự gửi một bản sao lưu lên đây trước khi gộp. Có thể đưa lại các ca trong bản sao lưu lên cloud (chỉ thêm/bổ sung, không xóa).</p>
+          </div>
+          <div class="toolbar"><button class="secondary" onclick="v39LoadDeviceBackups()" ${v39DeviceBackupLoading ? "disabled" : ""}>${v39DeviceBackupLoading ? "Đang tải…" : "Xem bản sao lưu thiết bị"}</button></div>
+        </div>
+        ${v39DeviceBackupRows === null ? "" : (!v39DeviceBackupRows.length ? `<div class="empty">Chưa có bản sao lưu thiết bị nào.</div>` : `
+        <div class="table-scroll"><table>
+          <thead><tr><th>Thời điểm</th><th>Người dùng trên máy</th><th>Mã thiết bị</th><th>Dữ liệu</th><th></th></tr></thead>
+          <tbody>${v39DeviceBackupRows.map(row=>`
+            <tr>
+              <td>${escapeHtml(row.createdAtText || "")}</td>
+              <td>${escapeHtml(row.userName || "(chưa đăng nhập)")}</td>
+              <td><span class="meta">${escapeHtml(String(row.deviceId || "").slice(-8))}</span></td>
+              <td>${Number(row.shifts || 0)} ca · ${Number(row.notes || 0)} ghi chú<br><span class="meta">${Math.round(Number(row.chars || 0)/1024)} KB</span></td>
+              <td class="v39-row-actions">
+                <button class="small secondary" onclick="v39DownloadDeviceBackup('${escapeAttr(row.id)}')">Tải JSON</button>
+                ${Number(row.shifts || 0) ? `<button class="small" onclick="v39RestoreDeviceBackup('${escapeAttr(row.id)}')">Đưa ca lên cloud</button>` : ""}
               </td>
             </tr>`).join("")}
           </tbody>
