@@ -5118,6 +5118,8 @@
 
     function shouldAutoSyncShopeeShift(s){
       if(!s || !s.shop) return false;
+      // Worker chỉ lấy số liệu theo đúng Live ID; ca chưa nhập Live ID thì gọi chỉ nhận lỗi.
+      if(!String(s.shopeeLiveId || "").trim()) return false;
       const {time_from, time_to} = shiftShopeeWindowSeconds(s);
       if(!time_from || !time_to || time_to <= time_from) return false;
       const now = Math.floor(Date.now()/1000);
@@ -5174,11 +5176,19 @@
       return shopeeConnectionMap()[channel] || null;
     }
 
+    // Token truy cập Shopee chỉ sống 4 giờ và được Worker tự làm mới; điều quyết định là token làm mới,
+    // sống 30 ngày kể từ lần Shopee cấp token gần nhất. Quá hạn đó phải bấm Kết nối lại.
+    function shopeeRefreshValidUntil(conn){
+      const refreshExp = Number(conn?.refresh_expire_at || 0);
+      if(refreshExp) return refreshExp;
+      const exp = Number(conn?.expire_at || 0);
+      return exp ? exp - Number(conn?.expire_in || 0) + 30*86400 : 0;
+    }
     function shopeeConnectionStatusText(conn){
       if(!conn) return "Chưa kết nối";
       if(conn.status === "connected"){
-        const exp = Number(conn.expire_at || 0);
-        if(exp && exp * 1000 < Date.now()) return "Hết hạn token";
+        const until = shopeeRefreshValidUntil(conn);
+        if(until && until * 1000 < Date.now()) return "Hết hạn – cần kết nối lại";
         return "Đã kết nối";
       }
       if(conn.status === "error") return "Lỗi kết nối";
@@ -5203,7 +5213,8 @@
         const shopName = conn?.shop_name || conn?.merchant_name || "-";
         const userId = conn?.user_id || conn?.seller_id || conn?.main_account_id || conn?.shop_user_id || "-";
         const connectedAt = conn?.connectedAt || conn?.updatedAt || "-";
-        const expireAt = conn?.expire_at ? new Date(Number(conn.expire_at) * 1000).toLocaleString("vi-VN") : "-";
+        const refreshUntilTs = shopeeRefreshValidUntil(conn);
+        const refreshUntil = refreshUntilTs ? new Date(refreshUntilTs * 1000).toLocaleString("vi-VN") : "-";
         const lastSync = conn?.lastSyncAt || "-";
         const cleanedConnError = cleanStaleErrorText(conn?.lastError);
         const lastError = cleanedConnError ? `<div class="meta" style="color:#991b1b;margin-top:4px">${cleanedConnError}</div>` : "";
@@ -5213,7 +5224,7 @@
           <td>${shopId}</td>
           <td>${userId}</td>
           <td>${shopName}</td>
-          <td>${connectedAt}<br/><span class="meta">Token hết hạn: ${expireAt}</span></td>
+          <td>${connectedAt}<br/><span class="meta">Tự làm mới được tới: ${refreshUntil}</span></td>
           <td>${lastSync}</td>
           <td>
             <button class="small green" onclick="connectShopeeChannel('${encodeURIComponent(ch)}')">Kết nối</button>
@@ -5569,7 +5580,7 @@
         return;
       }
       shopeeAutoSyncRunning = true;
-      let ok = 0, changed = 0, fail = 0;
+      let ok = 0, changed = 0, fail = 0, newErrors = 0;
       for(const s of shifts){
         try{
           const didChange = await syncShopeeMetricsForShift(s, {silent:true});
@@ -5579,12 +5590,16 @@
           fail++;
           console.warn("Không đồng bộ được Shopee cho ca", s.id, e);
           if(!s.shopeeMetrics) s.shopeeMetrics = {};
-          s.shopeeMetrics.lastError = e.message;
-          s.shopeeMetrics.syncedAt = nowText();
-          recordDatabaseEvent({module:"shopee_auto_sync", action:"Lỗi tự động đồng bộ Shopee", shift:s, details:{channel:s.shop, error:e.message}});
+          // Lỗi giống lần trước (chạy lại mỗi phút) chỉ ghi nhật ký và lưu một lần để không làm đầy nhật ký.
+          if(s.shopeeMetrics.lastError !== e.message){
+            newErrors++;
+            s.shopeeMetrics.lastError = e.message;
+            s.shopeeMetrics.syncedAt = nowText();
+            recordDatabaseEvent({module:"shopee_auto_sync", action:"Lỗi tự động đồng bộ Shopee", shift:s, details:{channel:s.shop, error:e.message}});
+          }
         }
       }
-      if(changed || fail) await saveDB({immediate:true});
+      if(changed || newErrors) await saveDB({immediate:true});
       lastShopeeAutoSyncText = `${nowText()} · ${ok} ca OK · ${changed} ca cập nhật${fail ? " · "+fail+" lỗi" : ""}`;
       renderContent();
       shopeeAutoSyncRunning = false;
