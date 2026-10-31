@@ -5388,12 +5388,17 @@
       }
     }
 
+    // V40.1: Worker Shopee kiểm tra phiên đăng nhập web (Admin cho kết nối/ngắt, mọi tài khoản cho số liệu live).
+    function shopeeWorkerFetch(url, options={}){
+      return fetch(url, {...options, headers:{...(options.headers || {}), "Authorization":"Bearer " + liveToken()}});
+    }
+
     async function refreshShopeeConnections(){
       if(!isAdmin()) return;
       const endpoint = getShopeeSyncEndpoint();
       if(!endpoint){ openShopeeSettings(); return; }
       try{
-        const res = await fetch(`${endpoint}/api/shopee/connections`);
+        const res = await shopeeWorkerFetch(`${endpoint}/api/shopee/connections`);
         const data = await res.json();
         if(!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
         if(!db.settings) db.settings = {};
@@ -5407,16 +5412,26 @@
       }
     }
 
-    function connectShopeeChannel(encodedChannel){
+    async function connectShopeeChannel(encodedChannel){
       if(!isAdmin()) return;
       const channel = decodeURIComponent(encodedChannel);
       let endpoint = getShopeeSyncEndpoint();
       if(!endpoint){ openShopeeSettings(); endpoint = getShopeeSyncEndpoint(); }
       if(!endpoint) return toast("Chưa cấu hình Worker Shopee");
-      const url = `${endpoint}/api/shopee/connect?channel=${encodeURIComponent(channel)}&return_url=${encodeURIComponent(location.href)}`;
-      window.open(url, "_blank");
-      toast("Đã mở trang ủy quyền Shopee cho kênh " + channel);
-      setTimeout(refreshShopeeConnections, 6000);
+      // Mở tab ngay trong lúc bấm để trình duyệt không chặn popup, rồi điền địa chỉ ủy quyền khi Worker trả về.
+      const popup = window.open("", "_blank");
+      try{
+        const res = await shopeeWorkerFetch(`${endpoint}/api/shopee/connect?channel=${encodeURIComponent(channel)}&return_url=${encodeURIComponent(location.href)}`);
+        const data = await res.json().catch(()=>({}));
+        if(!res.ok || !data.url) throw new Error(data.error || `HTTP ${res.status}`);
+        if(popup) popup.location.href = data.url; else location.href = data.url;
+        toast("Đã mở trang ủy quyền Shopee cho kênh " + channel);
+        setTimeout(refreshShopeeConnections, 6000);
+      }catch(e){
+        if(popup) popup.close();
+        console.error(e);
+        toast("Không mở được trang ủy quyền Shopee: " + e.message);
+      }
     }
 
     async function disconnectShopeeChannel(encodedChannel){
@@ -5426,7 +5441,7 @@
       const endpoint = getShopeeSyncEndpoint();
       if(!endpoint) return toast("Chưa cấu hình Worker Shopee");
       try{
-        const res = await fetch(`${endpoint}/api/shopee/disconnect?channel=${encodeURIComponent(channel)}`, {method:"POST"});
+        const res = await shopeeWorkerFetch(`${endpoint}/api/shopee/disconnect?channel=${encodeURIComponent(channel)}`, {method:"POST"});
         const data = await res.json();
         if(!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
         if(!db.settings) db.settings = {};
@@ -5513,7 +5528,7 @@
         throw new Error("Khung giờ ca live không hợp lệ");
       }
       const url = `${endpoint}/api/shopee/live-report?channel=${encodeURIComponent(s.shop || "")}&shift_id=${encodeURIComponent(s.id || "")}&live_id=${encodeURIComponent(s.shopeeLiveId || "")}&live_url=${encodeURIComponent(s.shopeeLiveUrl || "")}&time_from=${window.time_from}&time_to=${window.time_to}`;
-      const res = await fetch(url, {method:"GET", headers:{"Accept":"application/json"}});
+      const res = await shopeeWorkerFetch(url, {method:"GET", headers:{"Accept":"application/json"}});
       const data = await res.json().catch(()=>null);
       if(!res.ok || !data || data.error){
         throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
