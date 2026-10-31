@@ -1872,6 +1872,7 @@
         const open = indexedDB.open(V39_IDB_NAME,1);
         open.onupgradeneeded = ()=>open.result.createObjectStore(V39_IDB_STORE);
         open.onerror = ()=>reject(open.error);
+        open.onblocked = ()=>reject(new Error("IndexedDB đang bị một tab khác giữ"));
         open.onsuccess = ()=>{
           const tx = open.result.transaction(V39_IDB_STORE,mode);
           const req = run(tx.objectStore(V39_IDB_STORE));
@@ -1884,13 +1885,26 @@
       const raw = localStorage.getItem(DB_KEY);
       return raw === V39_CACHE_POINTER ? v39IdbRaw : raw;
     }
+    // Nếu không đọc được bản lưu lớn (IndexedDB treo/lỗi), phiên này không ghi đè lên nó
+    // để không mất thay đổi chưa kịp đưa lên máy chủ; dữ liệu vẫn tải từ máy chủ bình thường.
+    let v39IdbReadFailed = false;
     async function v39PreloadIdbCache(){
+      if(v39IdbRaw !== null || localStorage.getItem(DB_KEY) !== V39_CACHE_POINTER || !v39HasIdb()) return;
       try{
-        if(localStorage.getItem(DB_KEY) === V39_CACHE_POINTER && v39HasIdb()) v39IdbRaw = await v39IdbRequest("readonly",store=>store.get(DB_KEY));
-      }catch(err){ console.error("Không đọc được bộ nhớ IndexedDB",err); }
+        v39IdbRaw = await Promise.race([
+          v39IdbRequest("readonly",store=>store.get(DB_KEY)),
+          new Promise((_,reject)=>setTimeout(()=>reject(new Error("Đọc IndexedDB quá 8 giây")),8000))
+        ]);
+        v39IdbReadFailed = false;
+      }catch(err){
+        v39IdbReadFailed = true;
+        console.error("Không đọc được bộ nhớ IndexedDB",err);
+        warnStorage("Không đọc được bộ nhớ trình duyệt. Dữ liệu được tải từ máy chủ; hãy đóng bớt tab web cũ rồi tải lại trang.");
+      }
     }
     // Chỉ ghi bản mới nhất; nhiều lần lưu liên tiếp gộp thành một lần ghi.
     function v39QueueIdbWrite(json){
+      if(v39IdbReadFailed){ localSnapshotSaved = false; return; }
       v39IdbPendingJson = json;
       if(v39IdbWriting) return;
       v39IdbWriting = true;
@@ -2487,6 +2501,7 @@
         if(!result.ok) return toast(result.data.error || "Không đăng nhập được");
         try{ localStorage.setItem(LIVE_TOKEN_KEY,result.data.token); localStorage.setItem(LIVE_ACCOUNT_KEY,result.data.account.id); }catch(_){}
         sessionStorage.setItem(SESSION_KEY, result.data.account.id);
+        await v39PreloadIdbCache();
         await loadDB();
         await v39PrepareLogStorage();
         currentUser = db.accounts.find(a=>a.id === result.data.account.id) || result.data.account;
@@ -7245,7 +7260,6 @@
 
     async function init(){
       enhanceAccessibility();
-      await v39PreloadIdbCache();
       if(hasFirebaseConfig() && !liveToken()){
         // Chưa đăng nhập: chỉ hiện trang đăng nhập, chưa tải hay tạo dữ liệu nào.
         db = {accounts:[],shifts:[],notes:[],histories:[],dataLogs:[],reportEditRequests:[],lateReportRequests:[],channels:[],settings:{}};
@@ -7255,6 +7269,8 @@
       if(liveToken() && !sessionStorage.getItem(SESSION_KEY)){
         try{ sessionStorage.setItem(SESSION_KEY, localStorage.getItem(LIVE_ACCOUNT_KEY) || ""); }catch(_){}
       }
+      // Chỉ đọc bản lưu lớn khi đã đăng nhập, để trang đăng nhập luôn hiện ngay.
+      await v39PreloadIdbCache();
       await loadDB();
       await v39PrepareLogStorage();
       renderApp();
