@@ -1,0 +1,14 @@
+# Worker Shopee của Gooby Live Dashboard. Cloudflare tự deploy khi có commit mới trên nhánh main.
+name = "shopee-performance-sync"
+main = "src/index.js"
+compatibility_date = "2026-07-14"
+
+# Giữ nguyên các biến đặt trong Cloudflare (LIVE_API_BASE, SHOPEE_PARTNER_ID, DASHBOARD_ALLOWED_ORIGIN...).
+# Khóa bí mật (SHOPEE_PARTNER_KEY, LIVE_SERVICE_TOKEN) luôn được Cloudflare giữ, không nằm trong kho này.
+keep_vars = true
+
+[triggers]
+crons = ["* * * * *"]
+
+[observability]
+enabled = true
