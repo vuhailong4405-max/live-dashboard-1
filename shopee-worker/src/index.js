@@ -28,7 +28,7 @@
  *   DASHBOARD_ALLOWED_ORIGIN=*
  */
 
-const WORKER_VERSION = "V40.4 live-board";
+const WORKER_VERSION = "V40.5 live-time";
 const AUTH_PARTNER_PATH = "/api/v2/shop/auth_partner";
 const TOKEN_GET_PATH = "/api/v2/auth/token/get";
 const TOKEN_REFRESH_PATH = "/api/v2/auth/access_token/get";
@@ -636,7 +636,12 @@ async function syncOneActiveShift(env, shiftId) {
     return casPatchShiftMetrics(env, shiftId, async shift => {
       if(String(shift?.shopeeLiveId||"")!==initialLiveId) return {skipped:true,reason:"Live ID đã đổi trong lúc đồng bộ"};
       if (hasMatchingSnapshot(shift)) {
-        shift.shopeeLiveMetrics = { ...shift.shopeeLiveMetrics, lastAttemptError:e.message, lastAttemptAt:nowTextVN(), lastAttemptAtTs:Date.now() };
+        const m = shift.shopeeLiveMetrics;
+        // V40.5: Shopee không trả gì sau khi phiên dừng ("not ongoing"), nên giờ kết thúc live thật
+        // = lần cuối Shopee còn xác nhận phiên đang live (sai số dưới một chu kỳ cron).
+        const endedOnShopee = /not ongoing/i.test(e.message) && !Number(m.liveEndTs || 0) && Number(m.syncedAtTs || 0);
+        shift.shopeeLiveMetrics = { ...m, lastAttemptError:e.message, lastAttemptAt:nowTextVN(), lastAttemptAtTs:Date.now(),
+          ...(endedOnShopee ? { liveEndTs:Math.floor(Number(m.syncedAtTs) / 1000), liveEndSource:"last_live_snapshot" } : {}) };
       } else {
         shift.shopeeLiveMetrics = { source:"shopee_get_session_metric", dataMode:"live_session_metric", channel:shift.shop, live_id:String(shift.shopeeLiveId||""), session_id:String(shift.shopeeLiveId||""), lastError:e.message, lastAttemptError:e.message, syncedAt:nowTextVN(), syncedAtTs:Date.now(), capturedWhileLive:false, finalized:false };
       }

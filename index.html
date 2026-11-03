@@ -2464,8 +2464,34 @@
       return String(value || "").trim();
     }
 
+    // V40.5: thời gian phát thật trên Shopee của phiên gắn với ca (giờ bắt đầu từ Shopee; giờ kết thúc do Worker
+    // ghi khi Shopee báo phiên dừng). Phiên còn chạy và ca chưa kết thúc thì tính tới hiện tại; ca đã kết thúc trên
+    // dashboard mà chưa có giờ dừng thì lấy lần cuối Shopee xác nhận còn live. Trả null nếu không có/không hợp lệ.
+    function shopeeLiveRange(shift){
+      const m = matchedShopeeMetrics(shift);
+      const start = Number(m?.liveStartTs || 0) * 1000;
+      if(!start) return null;
+      let end = Number(m.liveEndTs || 0) * 1000, ongoing = false;
+      if(!end){
+        const dashboardLive = (shift.host?.checkinTs && !shift.host?.endTs) || (shift.supportId && shift.support?.checkinTs && !shift.support?.endTs);
+        if(dashboardLive){ end = nowTs(); ongoing = true; }
+        else end = Number(m.syncedAtTs || 0);
+      }
+      const ms = end - start;
+      if(!(ms > 0) || ms > 16*3600000) return null;
+      return {start, end, ongoing, ms};
+    }
+    function shopeeLiveRangeText(shift){
+      const r = shopeeLiveRange(shift);
+      if(!r) return "";
+      const hm = ts=>new Date(ts).toLocaleTimeString("vi-VN",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Ho_Chi_Minh"});
+      return `Theo Shopee: ${hm(r.start)} → ${r.ongoing ? "đang live" : hm(r.end)}`;
+    }
+
     function roleEffectiveMs(shift, role){
       if(!shift) return 0;
+      // Giờ live của host lấy theo thời gian phát thật trên Shopee khi ca có dữ liệu phiên; không có thì theo check-in.
+      if(role === "host"){ const shopee = shopeeLiveRange(shift); if(shopee) return shopee.ms; }
       const hasSupport = !!shift.supportId;
       const hostMs = actualMs(shift.host);
       const supportMs = hasSupport ? actualMs(shift.support) : 0;
@@ -2943,7 +2969,8 @@
       const m = matchedShopeeMetrics(s);
       if(!m) return `<div class="live-now-shopee">Đang chờ số liệu Shopee cho phiên ${escapeHtml(s.shopeeLiveId)}…</div>`;
       const peak = m.peak_ccu ?? m.peakCcu;
-      return `<div class="live-now-shopee">Đang xem <b>${liveNum(m.ccu)}</b>${peak ? ` (đỉnh ${liveNum(peak)})` : ""} · Thêm giỏ <b>${liveNum(m.atc)}</b> · CO <b>${livePct(m.co)}</b> · Shopee cập nhật ${m.syncedAtTs ? relativeTimeFromMs(m.syncedAtTs) : escapeHtml(m.syncedAt || "")}</div>`;
+      const range = shopeeLiveRangeText(s);
+      return `<div class="live-now-shopee">${range ? `${escapeHtml(range)} · ` : ""}Đang xem <b>${liveNum(m.ccu)}</b>${peak ? ` (đỉnh ${liveNum(peak)})` : ""} · Thêm giỏ <b>${liveNum(m.atc)}</b> · CO <b>${livePct(m.co)}</b> · Shopee cập nhật ${m.syncedAtTs ? relativeTimeFromMs(m.syncedAtTs) : escapeHtml(m.syncedAt || "")}</div>`;
     }
     // ===== Đang live trên Shopee (V40.4): số liệu phiên do Worker lấy mỗi phút, đẩy về qua realtime. =====
     function livePct(v){
@@ -2976,6 +3003,7 @@
           <div>
             <div class="live-card-title"><span class="badge purple">${escapeHtml(s.shop || "Khác")}</span> ${escapeHtml(m?.title || raw.title || `${s.start}–${s.end}`)}</div>
             <div class="live-card-sub">${escapeHtml(shiftPeopleLabel(s))} · ${s.date} ${s.start}–${s.end}${m?.syncedAtTs ? ` · cập nhật ${relativeTimeFromMs(m.syncedAtTs)}` : ""}</div>
+            ${shopeeLiveRange(s) ? `<div class="live-card-sub"><b>${escapeHtml(shopeeLiveRangeText(s))}</b> · đã live ${formatDuration(shopeeLiveRange(s).ms)}</div>` : ""}
           </div>
           ${canEditLink ? `<button class="small secondary" onclick="openLiveUrlModal('${s.id}')">${s.shopeeLiveId ? "Sửa link live" : "Nhập link live"}</button>` : ""}
         </div>`;
@@ -3357,6 +3385,7 @@
             <div class="metric">
               <div class="metric-label">Host live thực tế</div>
               <div class="metric-value timer">${showHostEnd}</div>
+              <div class="meta">${escapeHtml(shopeeLiveRangeText(shift) || (shift.host.checkinTs ? "Theo check-in trên dashboard" : ""))}</div>
             </div>
             <div class="metric">
               <div class="metric-label">Trợ live thực tế</div>
@@ -5208,7 +5237,8 @@
       document.getElementById("reportHasCtv").checked = !!report?.ctvEnabled;
       document.getElementById("reportCtvHours").value = ms ? Math.floor(ms / 3600000) : "";
       document.getElementById("reportCtvMinutes").value = ms ? Math.round((ms % 3600000) / 60000) : "";
-      document.getElementById("reportCtvHint").textContent = `Giờ live thực tế của Host: ${formatDuration(roleEffectiveMs(shift,"host"))}. Giờ của CTV sẽ được trừ vào giờ Host trong báo cáo sau live.`;
+      const liveSource = shopeeLiveRangeText(shift);
+      document.getElementById("reportCtvHint").textContent = `Giờ live thực tế của Host: ${formatDuration(roleEffectiveMs(shift,"host"))} (${liveSource ? liveSource.replace("Theo Shopee: ","theo Shopee ") : "theo check-in"}). Giờ của CTV sẽ được trừ vào giờ Host trong báo cáo sau live.`;
       toggleReportCtv();
     }
     function toggleReportCtv(){
@@ -6232,7 +6262,7 @@
         "engagementMetricsAvailable","currency","rawMetric","rawDetail","capturedWhileLive","finalized",
         "finalizedAt","finalizedAtTs","dashboardEndTs","time_from","time_to","syncedAt","syncedAtTs",
         "lastError","lastAttemptError","lastAttemptAt","lastAttemptAtTs","note",
-        "items","title","avgWatchMs","liveStartTs","liveEndTs"
+        "items","title","avgWatchMs","liveStartTs","liveEndTs","liveEndSource"
       ];
       for(const key of workerKeys){
         if(Object.prototype.hasOwnProperty.call(remote,key)) merged[key]=v38Clone(remote[key]);
