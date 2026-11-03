@@ -631,6 +631,35 @@
     .live-now .live-now-actions button{background:#fff;color:var(--ds-primary-hover);min-height:46px;flex:1 1 180px}
     .live-now .live-now-actions button:hover{background:var(--ds-blush)}
     .live-now .live-now-actions button.red{background:#fcebeb;color:#791f1f}
+    .live-now-shopee{font-size:var(--fs-sm);color:#f4c0d1;line-height:1.5}
+    .live-now-shopee b{color:#fff}
+    /* Khối "Đang live trên Shopee" cho Admin/Lead Live */
+    .live-board{background:var(--ds-surface);border:1px solid var(--ds-border);border-radius:var(--r-xl);padding:var(--sp-5);margin-bottom:var(--sp-4);display:grid;gap:var(--sp-4)}
+    .live-board h2{font-size:18px;display:flex;align-items:center;gap:10px;margin:0}
+    .live-board-head p{margin:4px 0 0;color:var(--ds-text-muted);font-size:var(--fs-sm)}
+    .live-board-dot{width:10px;height:10px;border-radius:50%;background:var(--ds-danger);animation:syncPulse 1.2s ease-in-out infinite}
+    .live-board-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:var(--sp-3);align-items:start}
+    .live-card{border:1px solid var(--ds-border);border-radius:var(--r-lg);padding:var(--sp-4);display:grid;gap:var(--sp-3);align-content:start;background:var(--ds-bg)}
+    .live-card-top{display:flex;justify-content:space-between;gap:var(--sp-2);flex-wrap:wrap;align-items:flex-start}
+    .live-card-title{font-weight:700;color:var(--ds-text)}
+    .live-card-sub{font-size:var(--fs-xs);color:var(--ds-text-muted)}
+    .live-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sp-2)}
+    .live-metric{background:var(--ds-surface);border:1px solid var(--ds-border);border-radius:var(--r-md);padding:8px 10px;min-width:0}
+    .live-metric span{display:block;font-size:var(--fs-xs);color:var(--ds-text-muted)}
+    .live-metric b{display:block;font-size:var(--fs-lg);font-weight:700;color:var(--ds-text);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+    .live-metric.hero b{color:var(--ds-primary)}
+    .live-items{display:grid;gap:6px}
+    .live-items-title{font-size:var(--fs-xs);font-weight:700;color:var(--ds-text-muted);text-transform:uppercase;letter-spacing:.04em}
+    .live-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--sp-2);font-size:var(--fs-sm);padding:6px 10px;background:var(--ds-surface);border-radius:var(--r-md)}
+    .live-item-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .live-item-stats{color:var(--ds-text-muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+    .live-item-stats b{color:var(--ds-success)}
+    .live-card-note{font-size:var(--fs-sm);color:var(--ds-text-muted);background:var(--ds-surface);border-radius:var(--r-md);padding:10px 12px}
+    .live-card-note.warn{background:var(--ds-warning-soft);color:var(--ds-warning-text)}
+    .live-quick{border-top:1px dashed var(--ds-border);padding-top:var(--sp-4);display:grid;gap:var(--sp-2)}
+    .live-quick label{font-size:var(--fs-sm);font-weight:600;color:var(--ds-text)}
+    .live-quick-row{display:flex;gap:var(--sp-2);flex-wrap:wrap}
+    .live-quick-row input{flex:1 1 320px;min-width:0}
 
     /* Việc cần làm ngay */
     .my-shift-focus{background:var(--ds-surface);border:1px solid var(--ds-border);border-radius:var(--r-xl);box-shadow:var(--sh-1);padding:var(--sp-5);display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:var(--sp-5);align-items:center}
@@ -716,6 +745,10 @@
       .my-shift-group{padding:2px var(--sp-3)}
       .live-now{padding:var(--sp-4)}
       .live-now-timer{font-size:30px}
+      .live-board{padding:var(--sp-4)}
+      .live-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .live-item{grid-template-columns:1fr;gap:2px}
+      .live-item-name{white-space:normal}
       .compact-card .actions button{flex:1 1 calc(50% - 6px);min-height:44px;font-size:var(--fs-sm)}
       .ctv-fields{grid-template-columns:minmax(0,1fr)}
       .modal-backdrop{align-items:flex-end;padding:0}
@@ -785,6 +818,23 @@
 
       <section id="view-dashboard" class="view">
         <div id="statsGrid" class="grid stats-grid"></div>
+        <section id="liveShopeeBoard" class="live-board" aria-label="Đang live trên Shopee" hidden>
+          <div class="live-board-head">
+            <div>
+              <h2><span class="live-board-dot" aria-hidden="true"></span>Đang live trên Shopee</h2>
+              <p>Số liệu lấy trực tiếp từ Shopee theo Live ID của từng ca, tự cập nhật khoảng mỗi phút.</p>
+            </div>
+          </div>
+          <div id="liveBoardCards" class="live-board-grid"></div>
+          <div id="liveQuickWatch" class="live-quick" hidden>
+            <label for="liveQuickWatchInput">Theo dõi nhanh một phiên bất kỳ (kể cả phiên chưa có ca trên dashboard)</label>
+            <div class="live-quick-row">
+              <input id="liveQuickWatchInput" placeholder="Dán link phiên live Shopee: Creator Center, link chia sẻ trong app hoặc shp.ee">
+              <button onclick="startLiveQuickWatch()">Xem số liệu</button>
+            </div>
+            <div id="liveQuickWatchResult"></div>
+          </div>
+        </section>
         <div id="shopeeRealtimeDashboardPanel"></div>
         <div class="section-head">
           <div>
@@ -1165,9 +1215,13 @@
         </div>
       </div>
       <div class="form-field">
-        <label>Link phiên live Shopee / Live ID</label>
-        <input id="checkinShopeeLiveUrl" placeholder="Dán link live Shopee khi bắt đầu ca, ví dụ: https://banhang.shopee.vn/creator-center/dashboard/live/37650484">
-        <div class="meta" style="margin-top:6px">Nên nhập tại lúc check-in để Worker lấy dữ liệu đúng phiên live, không lấy nhầm đơn ngoài live.</div>
+        <label for="checkinShopeeLiveUrl">Link phiên live Shopee <span id="checkinLiveRequired">(bắt buộc với host)</span></label>
+        <input id="checkinShopeeLiveUrl" placeholder="Dán link phiên đang live: Creator Center hoặc link Chia sẻ trong app Shopee">
+        <div class="meta" style="margin-top:6px">Có link phiên, dashboard tự lấy doanh thu, đơn, người xem… từ Shopee mỗi phút. Trong app Shopee đang live: bấm Chia sẻ → Sao chép liên kết.</div>
+        <label class="ctv-toggle" style="margin-top:8px">
+          <input id="checkinNoShopee" type="checkbox">
+          <span>Ca này không live trên Shopee</span>
+        </label>
       </div>
       <div class="form-field">
         <label>Ghi chú check-in nếu có</label>
@@ -2398,7 +2452,9 @@
     function parseShopeeLiveId(value){
       const text = String(value || "").trim();
       if(!text) return "";
-      const liveMatch = text.match(/\/live\/(\d+)/i) || text.match(/[?&](?:live_id|liveId|session_id)=([0-9]+)/i);
+      // Creator Center (/live/123), link chia sẻ trong app (?session=123) hoặc live.shopee.vn/...?id=123.
+      const liveMatch = text.match(/\/live\/(\d+)/i) || text.match(/[?&](?:session|session_id|sessionId|live_id|liveId)=([0-9]+)/i)
+        || (/live\.shopee/i.test(text) ? text.match(/[?&]id=([0-9]+)/i) : null);
       if(liveMatch) return liveMatch[1];
       const digits = text.match(/\b\d{5,}\b/);
       return digits ? digits[0] : "";
@@ -2881,6 +2937,124 @@
       return `Còn khoảng ${remain}s`;
     }
 
+    // Dòng số liệu Shopee dưới khối "ĐANG LIVE" của nhân viên.
+    function liveNowShopeeLine(s){
+      if(!s.shopeeLiveId) return `<div class="live-now-shopee">Chưa có link phiên live nên chưa lấy được số liệu Shopee. Bấm <b>Nhập link live</b>.</div>`;
+      const m = matchedShopeeMetrics(s);
+      if(!m) return `<div class="live-now-shopee">Đang chờ số liệu Shopee cho phiên ${escapeHtml(s.shopeeLiveId)}…</div>`;
+      const peak = m.peak_ccu ?? m.peakCcu;
+      return `<div class="live-now-shopee">Đang xem <b>${liveNum(m.ccu)}</b>${peak ? ` (đỉnh ${liveNum(peak)})` : ""} · Thêm giỏ <b>${liveNum(m.atc)}</b> · CO <b>${livePct(m.co)}</b> · Shopee cập nhật ${m.syncedAtTs ? relativeTimeFromMs(m.syncedAtTs) : escapeHtml(m.syncedAt || "")}</div>`;
+    }
+    // ===== Đang live trên Shopee (V40.4): số liệu phiên do Worker lấy mỗi phút, đẩy về qua realtime. =====
+    function livePct(v){
+      if(v === undefined || v === null || v === "") return "-";
+      const n = Number(v);
+      if(!Number.isFinite(n)) return escapeHtml(String(v));
+      return `${(n <= 1 ? n*100 : n).toLocaleString("vi-VN",{maximumFractionDigits:2})}%`;
+    }
+    function liveNum(v){ return v === undefined || v === null || v === "" ? "-" : Number(v).toLocaleString("vi-VN"); }
+    function liveMetricsHtml(m){
+      const peak = m.peak_ccu ?? m.peakCcu;
+      const tiles = [
+        ["Doanh thu", money(m.gmv || 0), true], ["Đơn hàng", liveNum(m.orders), true],
+        ["Lượt xem", liveNum(m.view)], ["Đang xem", `${liveNum(m.ccu)}${peak ? ` <small>/ đỉnh ${liveNum(peak)}</small>` : ""}`],
+        ["Thêm giỏ", liveNum(m.atc)], ["Tỷ lệ click (CTR)", livePct(m.ctr)], ["Chuyển đổi (CO)", livePct(m.co)], ["Xem trung bình", escapeHtml(m.avgWatch || "-")]
+      ];
+      const items = Array.isArray(m.items) ? m.items.slice(0,5) : [];
+      return `
+        <div class="live-metrics">${tiles.map(([label,value,hero])=>`<div class="live-metric${hero ? " hero" : ""}"><span>${label}</span><b>${value}</b></div>`).join("")}</div>
+        ${items.length ? `<div class="live-items"><div class="live-items-title">Sản phẩm nổi bật trong phiên</div>
+          ${items.map(it=>`<div class="live-item"><span class="live-item-name" title="${escapeHtml(it.name)}">${escapeHtml(it.name)}</span>
+            <span class="live-item-stats"><b>${liveNum(it.sold)} bán</b> · ${liveNum(it.atc)} giỏ · ${liveNum(it.clicks)} click</span></div>`).join("")}</div>` : ""}`;
+    }
+    function liveBoardCardHtml(s){
+      const m = matchedShopeeMetrics(s);
+      const raw = s.shopeeLiveMetrics || {};
+      const canEditLink = canManageShift(s) || isParticipant(s);
+      const head = `
+        <div class="live-card-top">
+          <div>
+            <div class="live-card-title"><span class="badge purple">${escapeHtml(s.shop || "Khác")}</span> ${escapeHtml(m?.title || raw.title || `${s.start}–${s.end}`)}</div>
+            <div class="live-card-sub">${escapeHtml(shiftPeopleLabel(s))} · ${s.date} ${s.start}–${s.end}${m?.syncedAtTs ? ` · cập nhật ${relativeTimeFromMs(m.syncedAtTs)}` : ""}</div>
+          </div>
+          ${canEditLink ? `<button class="small secondary" onclick="openLiveUrlModal('${s.id}')">${s.shopeeLiveId ? "Sửa link live" : "Nhập link live"}</button>` : ""}
+        </div>`;
+      if(!s.shopeeLiveId) return `<div class="live-card">${head}<div class="live-card-note warn">Ca này chưa có link phiên live nên chưa lấy được số liệu Shopee. Bấm <b>Nhập link live</b> và dán link phiên đang phát.</div></div>`;
+      const err = raw.lastAttemptError || raw.lastError || "";
+      if(!m) return `<div class="live-card">${head}<div class="live-card-note${err ? " warn" : ""}">${err ? `Shopee báo: ${escapeHtml(cleanStaleErrorText(err) || err)}` : `Đang chờ số liệu đầu tiên từ Shopee cho phiên ${escapeHtml(s.shopeeLiveId)} (thường dưới 2 phút).`}</div></div>`;
+      return `<div class="live-card">${head}${liveMetricsHtml(m)}${err ? `<div class="live-card-note warn">Lần lấy gần nhất lỗi: ${escapeHtml(err)} — đang hiện số liệu lần trước.</div>` : ""}</div>`;
+    }
+    function renderLiveShopeeBoard(){
+      const board = document.getElementById("liveShopeeBoard");
+      if(!board) return;
+      if(!currentUser || (!isAdmin() && !isLeadLive())){ board.hidden = true; return; }
+      // Ca có số liệu Shopee lên trước, doanh thu cao trước; ca chưa có số liệu theo giờ bắt đầu.
+      const gmvOf = s=>{ const m = matchedShopeeMetrics(s); return m ? Number(m.gmv || 0) : -1; };
+      const live = getChannelFilteredShifts(db.shifts.filter(s=>canViewShift(s) && computeShiftStatus(s).value === "active"))
+        .sort((a,b)=>gmvOf(b) - gmvOf(a) || (a.date+a.start).localeCompare(b.date+b.start));
+      const quick = document.getElementById("liveQuickWatch");
+      if(quick) quick.hidden = !isAdmin();
+      board.hidden = !live.length && !isAdmin();
+      document.getElementById("liveBoardCards").innerHTML = live.length ? live.map(liveBoardCardHtml).join("")
+        : `<div class="live-card-note">Hiện không có ca nào đang live trên dashboard.</div>`;
+      renderLiveQuickWatchResult();
+    }
+
+    // Theo dõi nhanh (chỉ Admin): xem số liệu một phiên bất kỳ qua Worker, không ghi vào ca.
+    let liveQuickWatch = {input:"",data:null,error:"",loading:false,at:0,ended:false};
+    let liveQuickWatchTimer = null;
+    function renderLiveQuickWatchResult(){
+      const box = document.getElementById("liveQuickWatchResult");
+      if(!box) return;
+      const q = liveQuickWatch;
+      if(!q.input){ box.innerHTML = ""; return; }
+      const stopBtn = `<button class="small secondary" onclick="stopLiveQuickWatch()">Dừng theo dõi</button>`;
+      if(q.loading && !q.data){ box.innerHTML = `<div class="live-card-note">Đang hỏi Shopee…</div>`; return; }
+      if(!q.data){ box.innerHTML = `<div class="live-card"><div class="live-card-note warn">${escapeHtml(q.error || "Chưa có số liệu")}</div><div>${stopBtn}</div></div>`; return; }
+      const d = q.data;
+      box.innerHTML = `<div class="live-card">
+        <div class="live-card-top"><div>
+          <div class="live-card-title"><span class="badge purple">${escapeHtml(d.channel || "")}</span> ${escapeHtml(d.title || `Phiên ${d.session_id || ""}`)}</div>
+          <div class="live-card-sub">Phiên ${escapeHtml(d.session_id || "")} · ${q.ended ? "phiên đã kết thúc, dừng tự cập nhật" : `cập nhật ${relativeTimeFromMs(q.at)}, tự làm mới mỗi phút`}</div>
+        </div>${stopBtn}</div>
+        ${liveMetricsHtml(d)}
+        ${q.error ? `<div class="live-card-note warn">${escapeHtml(q.error)}</div>` : ""}
+      </div>`;
+    }
+    async function refreshLiveQuickWatch(){
+      const endpoint = getShopeeSyncEndpoint();
+      if(!endpoint || !liveQuickWatch.input || liveQuickWatch.loading) return;
+      liveQuickWatch.loading = true; renderLiveQuickWatchResult();
+      try{
+        const res = await shopeeWorkerFetch(`${endpoint}/api/shopee/probe-session?live=${encodeURIComponent(liveQuickWatch.input)}`);
+        const data = await res.json().catch(()=>({}));
+        if(!res.ok || !data.ok) throw new Error(data.error && !data.attempts?.length ? data.error : (data.attempts || []).map(a=>`${a.channel}: ${a.error}`).join(" · ") || data.error || `HTTP ${res.status}`);
+        liveQuickWatch.data = {...data.metrics, channel:data.channel};
+        liveQuickWatch.error = "";
+      }catch(e){
+        // Shopee chỉ trả số liệu khi phiên còn live: phiên kết thúc thì giữ số cuối và dừng hỏi lại.
+        if(/not ongoing/i.test(e.message)){ liveQuickWatch.ended = true; stopLiveQuickWatchTimer(); }
+        liveQuickWatch.error = /not ongoing/i.test(e.message) ? "Phiên này không còn live trên Shopee." : e.message;
+      }
+      liveQuickWatch.loading = false; liveQuickWatch.at = Date.now();
+      renderLiveQuickWatchResult();
+    }
+    function stopLiveQuickWatchTimer(){ if(liveQuickWatchTimer){ clearInterval(liveQuickWatchTimer); liveQuickWatchTimer = null; } }
+    function startLiveQuickWatch(){
+      if(!isAdmin()) return toast("Chỉ Admin được theo dõi nhanh");
+      const input = String(document.getElementById("liveQuickWatchInput")?.value || "").trim();
+      if(!input) return toast("Dán link phiên live Shopee trước");
+      stopLiveQuickWatchTimer();
+      liveQuickWatch = {input,data:null,error:"",loading:false,at:0,ended:false};
+      liveQuickWatchTimer = setInterval(()=>{ if(!document.hidden && activeView === "dashboard") refreshLiveQuickWatch(); }, 60000);
+      refreshLiveQuickWatch();
+    }
+    function stopLiveQuickWatch(){
+      stopLiveQuickWatchTimer();
+      liveQuickWatch = {input:"",data:null,error:"",loading:false,at:0,ended:false};
+      renderLiveQuickWatchResult();
+    }
+
     function renderShopeeRealtimeDashboardPanel(shifts=[]){
       const wrap = document.getElementById("shopeeRealtimeDashboardPanel");
       if(!wrap) return;
@@ -2966,6 +3140,7 @@
         <div class="card"><div class="stat-title">${s[0]}</div><div class="stat-value">${s[1]}</div><div class="stat-note">${s[2]}</div></div>
       `).join("");
 
+      renderLiveShopeeBoard();
       renderShopeeRealtimeDashboardPanel(dashboardShifts);
 
       const shifts = dashboardShifts.filter(s=>!s.report).sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start));
@@ -3055,7 +3230,8 @@
               <div class="live-now-stat"><span>Đơn hàng</span><b>${Number(r.orders || 0).toLocaleString("vi-VN")}</b></div>
               <div class="live-now-stat"><span>Lượt xem</span><b>${Number(r.view || 0).toLocaleString("vi-VN")}</b></div>
             </div>
-            <div class="live-now-actions">${checkinBtn}${endBtn}<button onclick="prepareQuickNote('${liveShift.id}')">Ghi chú phát sinh</button></div>
+            ${liveNowShopeeLine(liveShift)}
+            <div class="live-now-actions">${checkinBtn}${endBtn}${liveShift.shopeeLiveId ? "" : `<button onclick="openLiveUrlModal('${liveShift.id}')">Nhập link live</button>`}<button onclick="prepareQuickNote('${liveShift.id}')">Ghi chú phát sinh</button></div>
           </section>`;
       }
 
@@ -4712,6 +4888,8 @@
       document.getElementById("checkinRole").value = role;
       document.getElementById("checkinMeta").textContent = `${roleNameInShift(role)} · ${role==="host"?s.hostName:supportNameLabel(s)} · ${s.date} · ${s.start}-${s.end}`;
       document.getElementById("checkinShopeeLiveUrl").value = s.shopeeLiveUrl || s.shopeeLiveId || "";
+      document.getElementById("checkinNoShopee").checked = false;
+      document.getElementById("checkinLiveRequired").hidden = role !== "host" || !!s.shopeeLiveId;
       document.getElementById("checkinNote").value = "";
       capturedPhoto = "";
 
@@ -4762,6 +4940,10 @@
       const liveInput = cleanShopeeLiveUrl(document.getElementById("checkinShopeeLiveUrl").value);
       const liveId = parseShopeeLiveId(liveInput);
       if(liveInput && !liveId) return toast("Link live Shopee chưa hợp lệ, chưa tách được Live ID");
+      // Host check-in phải có link phiên live (để Worker lấy số liệu Shopee), trừ khi ca không live trên Shopee.
+      if(role === "host" && !liveId && !s.shopeeLiveId && !document.getElementById("checkinNoShopee").checked){
+        return toast("Dán link phiên live Shopee, hoặc tích \"Ca này không live trên Shopee\"");
+      }
       const actionKey = `checkin:${shiftId}:${role}`;
       if(!beginAction(actionKey)) return;
       try{
@@ -5521,6 +5703,10 @@
         peakCcu:Number(data.peak_ccu || data.peakCcu || 0),
         engageCcu1m:Number(data.engage_ccu_1m || data.engageCcu1m || 0),
         avgWatch:String(data.avgWatch || data.avg_watch || data.average_watch_time || data.avg_view_duration || ""),
+        // Trường chỉ Worker V40.4 trả: giữ lại để bấm "Đồng bộ ngay" không xóa sản phẩm nổi bật/tên phiên.
+        ...(Array.isArray(data.items || old.items) ? {items:data.items || old.items} : {}),
+        ...((data.title || old.title) ? {title:data.title || old.title} : {}),
+        ...((data.avgWatchMs ?? old.avgWatchMs) != null ? {avgWatchMs:data.avgWatchMs ?? old.avgWatchMs} : {}),
         orderSnCount:Number(data.orderSnCount || 0),
         note:data.note || "",
         lastError:"",
@@ -5607,6 +5793,9 @@
     }
 
     function startShopeeAutoSyncLoop(){
+      // V40.4: Worker (cron mỗi phút) đã tự lấy số liệu cho mọi ca đang live và đẩy về qua realtime.
+      // Vòng lặp trên trình duyệt chỉ gọi Shopee trùng lần và ghi nhật ký mỗi phút, nên chỉ chạy khi bật rõ ràng.
+      if(db?.settings?.shopeeWebAutoSync !== true) return;
       if(shopeeAutoSyncTimer || !currentUser || !isAdmin()) return;
       shopeeAutoSyncTimer = setInterval(()=>runShopeeAutoSyncNow(true), Number(db?.settings?.shopeeSyncIntervalMs || SHOPEE_AUTO_SYNC_INTERVAL_MS));
       setTimeout(()=>runShopeeAutoSyncNow(true), 1200);
@@ -6042,7 +6231,8 @@
         "peak_ccu","peakCcu","engage_ccu_1m","engageCcu1m","avgWatch","commerceMetricsAvailable",
         "engagementMetricsAvailable","currency","rawMetric","rawDetail","capturedWhileLive","finalized",
         "finalizedAt","finalizedAtTs","dashboardEndTs","time_from","time_to","syncedAt","syncedAtTs",
-        "lastError","lastAttemptError","lastAttemptAt","lastAttemptAtTs","note"
+        "lastError","lastAttemptError","lastAttemptAt","lastAttemptAtTs","note",
+        "items","title","avgWatchMs","liveStartTs","liveEndTs"
       ];
       for(const key of workerKeys){
         if(Object.prototype.hasOwnProperty.call(remote,key)) merged[key]=v38Clone(remote[key]);
