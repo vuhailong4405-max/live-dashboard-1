@@ -1303,6 +1303,13 @@
           <button id="reportSyncSettingsBtn" type="button" class="gray" onclick="openShopeeSettings()">Cấu hình tự động</button>
         </div>
       </div>
+      <div class="ctv-block">
+        <label class="ctv-toggle">
+          <input id="reportManualMetrics" type="checkbox" onchange="toggleReportManualMetrics()">
+          <span>Số liệu theo host nhập (phiên live chung nhiều host / live 24h)</span>
+        </label>
+        <div class="meta" id="reportManualHint" style="margin-top:6px"></div>
+      </div>
       <div class="form-grid four">
         <div class="form-field">
           <label>GMV</label>
@@ -2467,7 +2474,19 @@
     // V40.5: thời gian phát thật trên Shopee của phiên gắn với ca (giờ bắt đầu từ Shopee; giờ kết thúc do Worker
     // ghi khi Shopee báo phiên dừng). Phiên còn chạy và ca chưa kết thúc thì tính tới hiện tại; ca đã kết thúc trên
     // dashboard mà chưa có giờ dừng thì lấy lần cuối Shopee xác nhận còn live. Trả null nếu không có/không hợp lệ.
-    function shopeeLiveRange(shift){
+    // Phiên live chung: nhiều ca dùng cùng một Live ID (ngày sale live 24h, nhiều host thay ca).
+    function shiftSharesLiveSession(shift){
+      const liveId = String(shift?.shopeeLiveId || "").trim();
+      return !!liveId && (db?.shifts || []).some(s=>s.id !== shift.id && String(s.shopeeLiveId || "").trim() === liveId);
+    }
+    // Ca dùng số liệu host nhập (không lấy số Shopee, giờ live theo check-in): theo ô tích trong báo cáo;
+    // chưa có báo cáo thì tự bật khi là phiên chung, vì số Shopee lúc đó là của cả phiên chứ không riêng ca nào.
+    function shiftUsesManualMetrics(shift){
+      return shift?.report ? !!shift.report.manualMetrics : shiftSharesLiveSession(shift);
+    }
+
+    function shopeeLiveRange(shift, manual = shiftUsesManualMetrics(shift)){
+      if(manual) return null;
       const m = matchedShopeeMetrics(shift);
       const start = Number(m?.liveStartTs || 0) * 1000;
       if(!start) return null;
@@ -2481,17 +2500,19 @@
       if(!(ms > 0) || ms > 16*3600000) return null;
       return {start, end, ongoing, ms};
     }
-    function shopeeLiveRangeText(shift){
-      const r = shopeeLiveRange(shift);
+    function shopeeLiveRangeText(shift, manual){
+      const r = shopeeLiveRange(shift, manual ?? shiftUsesManualMetrics(shift));
       if(!r) return "";
       const hm = ts=>new Date(ts).toLocaleTimeString("vi-VN",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Ho_Chi_Minh"});
       return `Theo Shopee: ${hm(r.start)} → ${r.ongoing ? "đang live" : hm(r.end)}`;
     }
 
-    function roleEffectiveMs(shift, role){
+    // manual: bỏ trống = theo lựa chọn đã lưu của ca (form báo cáo truyền giá trị ô tích đang chọn).
+    function roleEffectiveMs(shift, role, manual){
       if(!shift) return 0;
-      // Giờ live của host lấy theo thời gian phát thật trên Shopee khi ca có dữ liệu phiên; không có thì theo check-in.
-      if(role === "host"){ const shopee = shopeeLiveRange(shift); if(shopee) return shopee.ms; }
+      // Giờ live của host lấy theo thời gian phát thật trên Shopee khi ca có dữ liệu phiên; không có hoặc ca dùng
+      // số liệu host nhập (phiên chung) thì theo check-in.
+      if(role === "host"){ const shopee = shopeeLiveRange(shift, manual ?? shiftUsesManualMetrics(shift)); if(shopee) return shopee.ms; }
       const hasSupport = !!shift.supportId;
       const hostMs = actualMs(shift.host);
       const supportMs = hasSupport ? actualMs(shift.support) : 0;
@@ -3010,7 +3031,8 @@
       if(!s.shopeeLiveId) return `<div class="live-card">${head}<div class="live-card-note warn">Ca này chưa có link phiên live nên chưa lấy được số liệu Shopee. Bấm <b>Nhập link live</b> và dán link phiên đang phát.</div></div>`;
       const err = raw.lastAttemptError || raw.lastError || "";
       if(!m) return `<div class="live-card">${head}<div class="live-card-note${err ? " warn" : ""}">${err ? `Shopee báo: ${escapeHtml(cleanStaleErrorText(err) || err)}` : `Đang chờ số liệu đầu tiên từ Shopee cho phiên ${escapeHtml(s.shopeeLiveId)} (thường dưới 2 phút).`}</div></div>`;
-      return `<div class="live-card">${head}${liveMetricsHtml(m)}${err ? `<div class="live-card-note warn">Lần lấy gần nhất lỗi: ${escapeHtml(err)} — đang hiện số liệu lần trước.</div>` : ""}</div>`;
+      const sharedNote = shiftSharesLiveSession(s) ? `<div class="live-card-note">Phiên chung nhiều ca: số liệu dưới đây là của cả phiên. Mỗi host tự nhập số liệu ca mình khi báo cáo; giờ live tính theo check-in.</div>` : "";
+      return `<div class="live-card">${head}${sharedNote}${liveMetricsHtml(m)}${err ? `<div class="live-card-note warn">Lần lấy gần nhất lỗi: ${escapeHtml(err)} — đang hiện số liệu lần trước.</div>` : ""}</div>`;
     }
     function renderLiveShopeeBoard(){
       const board = document.getElementById("liveShopeeBoard");
@@ -3243,7 +3265,10 @@
       const liveRole = liveShift ? userRoleInShift(liveShift) : "";
       let liveNow = "";
       if(liveShift && liveRole){
-        const r = effectiveReport(liveShift);
+        // Phiên chung nhiều ca: trong lúc live hiện số liệu của cả phiên (ghi rõ), báo cáo thì host tự nhập số của ca.
+        const sessionMetrics = shiftUsesManualMetrics(liveShift) ? matchedShopeeMetrics(liveShift) : null;
+        const r = sessionMetrics || effectiveReport(liveShift);
+        const sessionLabel = sessionMetrics ? " cả phiên" : "";
         const endBtn = canEndLive(liveShift,liveRole) ? `<button class="red" onclick="openEndModal('${liveShift.id}','${liveRole}')">Kết thúc ${roleNameInShift(liveRole)}</button>` : "";
         const checkinBtn = canCheckin(liveShift,liveRole) ? `<button onclick="openCheckinModal('${liveShift.id}','${liveRole}')">Check-in ${roleNameInShift(liveRole)}</button>` : "";
         liveNow = `
@@ -3254,9 +3279,9 @@
             </div>
             <div class="live-now-timer" aria-label="Thời gian live">${formatDuration(roleEffectiveMs(liveShift,liveRole))}</div>
             <div class="live-now-stats">
-              <div class="live-now-stat"><span>GMV</span><b>${money(r.gmv || 0)}</b></div>
-              <div class="live-now-stat"><span>Đơn hàng</span><b>${Number(r.orders || 0).toLocaleString("vi-VN")}</b></div>
-              <div class="live-now-stat"><span>Lượt xem</span><b>${Number(r.view || 0).toLocaleString("vi-VN")}</b></div>
+              <div class="live-now-stat"><span>GMV${sessionLabel}</span><b>${money(r.gmv || 0)}</b></div>
+              <div class="live-now-stat"><span>Đơn hàng${sessionLabel}</span><b>${Number(r.orders || 0).toLocaleString("vi-VN")}</b></div>
+              <div class="live-now-stat"><span>Lượt xem${sessionLabel}</span><b>${Number(r.view || 0).toLocaleString("vi-VN")}</b></div>
             </div>
             ${liveNowShopeeLine(liveShift)}
             <div class="live-now-actions">${checkinBtn}${endBtn}${liveShift.shopeeLiveId ? "" : `<button onclick="openLiveUrlModal('${liveShift.id}')">Nhập link live</button>`}<button onclick="prepareQuickNote('${liveShift.id}')">Ghi chú phát sinh</button></div>
@@ -3694,9 +3719,10 @@
       return metrics;
     }
 
-    function effectiveReport(shift){
+    function effectiveReport(shift, manual = shiftUsesManualMetrics(shift)){
       const base = cloneData(shift?.report || {});
-      const metrics = matchedShopeeMetrics(shift);
+      // Số liệu host nhập: giữ nguyên số trong báo cáo, không ghi đè bằng số Shopee của cả phiên.
+      const metrics = manual ? null : matchedShopeeMetrics(shift);
       const hasShopee = !!metrics;
       if(hasShopee){
         const numericFields = [["gmv","gmv"],["orders","orders"],["coins","coins"],["view","view"],["aov","aov"],["atc","atc"],["comments","comments"]];
@@ -3800,6 +3826,7 @@
       {key:"gmvPerHour",label:"GMV / giờ live",format:"money"},
       {key:"gmvWetWipes",label:"GMV khăn ướt",format:"money"},
       {key:"gmvNewbornBox",label:"GMV Box Newborn",format:"money"},
+      {key:"manualMetrics",label:"Số liệu theo host nhập",format:"yesno"},
       {key:"ctvName",label:"Cộng tác viên"},
       {key:"ctvMs",label:"Giờ live cộng tác viên",format:"duration"},
       {key:"note",label:"Ghi chú tổng kết"}
@@ -3824,6 +3851,7 @@
       if(format === "money") return money(value);
       if(format === "number") return Number(value || 0).toLocaleString("vi-VN");
       if(format === "duration") return formatDuration(Number(value || 0));
+      if(format === "yesno") return value ? "Có" : "Không";
       return String(value);
     }
 
@@ -5199,17 +5227,11 @@
       if(submitBtn){
         submitBtn.textContent = s.report && !canManageReport ? "Gửi yêu cầu sửa báo cáo" : "Lưu báo cáo sau live";
       }
-      const r = pendingReq?.after || effectiveReport(s) || {};
-      document.getElementById("reportGMV").value = r.gmv || 0;
-      document.getElementById("reportOrders").value = r.orders || 0;
-      document.getElementById("reportCoins").value = r.coins || 0;
-      document.getElementById("reportCTR").value = r.ctr || "";
-      document.getElementById("reportCO").value = r.co || "";
-      document.getElementById("reportView").value = r.view || 0;
-      document.getElementById("reportAOV").value = r.aov || (r.orders ? Math.round(r.gmv/r.orders) : 0);
-      document.getElementById("reportATC").value = r.atc || 0;
-      document.getElementById("reportComments").value = r.comments || 0;
-      document.getElementById("reportAvgWatch").value = r.avgWatch || "";
+      const saved = pendingReq?.after || s.report || null;
+      const manual = saved ? !!saved.manualMetrics : shiftSharesLiveSession(s);
+      document.getElementById("reportManualMetrics").checked = manual;
+      const r = pendingReq?.after || effectiveReport(s, manual) || {};
+      fillReportMetricFields(reportMetricSource(s, manual));
       document.getElementById("reportMinigameCost").value = Number(r.minigameCost || 0);
       document.getElementById("reportGmvWetWipes").value = Number(r.gmvWetWipes || 0);
       document.getElementById("reportGmvNewbornBox").value = Number(r.gmvNewbornBox || 0);
@@ -5218,8 +5240,46 @@
       document.getElementById("goobyNewbornBoxField").classList.toggle("hidden", !isGooby);
       document.getElementById("reportNote").value = r.note || "";
       fillReportCtvFields(s, r);
+      updateReportManualUi(s);
       autoReportDerived();
       openModal("reportModal");
+    }
+
+    // ===== Số liệu theo host nhập (phiên live chung / live 24h) =====
+    const REPORT_SHOPEE_FIELDS = [["reportGMV","gmv"],["reportOrders","orders"],["reportCoins","coins"],["reportCTR","ctr"],["reportCO","co"],
+      ["reportView","view"],["reportATC","atc"],["reportComments","comments"],["reportAvgWatch","avgWatch"]];
+    // Số liệu điền sẵn: theo host nhập thì lấy báo cáo đã lưu ở chế độ này (chưa có thì để trống cho host điền);
+    // theo Shopee thì như trước (yêu cầu sửa đang chờ hoặc báo cáo kèm số liệu phiên Shopee).
+    function reportMetricSource(s, manual){
+      const pending = !canManageShift(s) ? getPendingReportEditRequest(s.id, currentUser.id)?.after : null;
+      const saved = pending || s.report || null;
+      if(manual) return saved?.manualMetrics ? saved : {};
+      return pending || effectiveReport(s, false) || {};
+    }
+    function fillReportMetricFields(r){
+      REPORT_SHOPEE_FIELDS.forEach(([id,key])=>{
+        const text = key === "ctr" || key === "co" || key === "avgWatch";
+        document.getElementById(id).value = text ? (r[key] || "") : (r[key] || 0);
+      });
+      document.getElementById("reportAOV").value = r.aov || (r.orders ? Math.round(r.gmv/r.orders) : 0);
+    }
+    function reportManualChecked(){ return !!document.getElementById("reportManualMetrics")?.checked; }
+    function updateReportManualUi(s){
+      const manual = reportManualChecked();
+      const shared = (db.shifts || []).filter(x=>x.id !== s.id && s.shopeeLiveId && String(x.shopeeLiveId || "").trim() === String(s.shopeeLiveId).trim()).length;
+      document.getElementById("shopeeSyncNotice").classList.toggle("hidden", manual);
+      document.getElementById("reportManualHint").textContent = manual
+        ? `Host tự nhập số liệu của ca mình; dashboard không lấy số Shopee cho ca này. Giờ live tính theo check-in → kết thúc: ${formatDuration(roleEffectiveMs(s,"host",true))}.${shared ? ` Phiên live ${s.shopeeLiveId} đang dùng chung với ${shared} ca khác.` : ""}`
+        : (s.shopeeLiveId ? `Số liệu lấy theo phiên live Shopee ${s.shopeeLiveId}.${shared ? ` Lưu ý: phiên này dùng chung với ${shared} ca khác, số Shopee là của cả phiên.` : ""}` : "Ca chưa có link live: nhập số liệu như bình thường.");
+      const liveSource = shopeeLiveRangeText(s, manual);
+      document.getElementById("reportCtvHint").textContent = `Giờ live thực tế của Host: ${formatDuration(roleEffectiveMs(s,"host",manual))} (${liveSource ? liveSource.replace("Theo Shopee: ","theo Shopee ") : "theo check-in"}). Giờ của CTV sẽ được trừ vào giờ Host trong báo cáo sau live.`;
+    }
+    function toggleReportManualMetrics(){
+      const s = db.shifts.find(x=>x.id === document.getElementById("reportShiftId").value);
+      if(!s) return;
+      fillReportMetricFields(reportMetricSource(s, reportManualChecked()));
+      updateReportManualUi(s);
+      autoReportDerived();
     }
 
     function fillReportCtvFields(shift, report){
@@ -5237,8 +5297,6 @@
       document.getElementById("reportHasCtv").checked = !!report?.ctvEnabled;
       document.getElementById("reportCtvHours").value = ms ? Math.floor(ms / 3600000) : "";
       document.getElementById("reportCtvMinutes").value = ms ? Math.round((ms % 3600000) / 60000) : "";
-      const liveSource = shopeeLiveRangeText(shift);
-      document.getElementById("reportCtvHint").textContent = `Giờ live thực tế của Host: ${formatDuration(roleEffectiveMs(shift,"host"))} (${liveSource ? liveSource.replace("Theo Shopee: ","theo Shopee ") : "theo check-in"}). Giờ của CTV sẽ được trừ vào giờ Host trong báo cáo sau live.`;
       toggleReportCtv();
     }
     function toggleReportCtv(){
@@ -5905,17 +5963,23 @@
       const ctvHours = Number(document.getElementById("reportCtvHours").value || 0);
       const ctvMinutes = Number(document.getElementById("reportCtvMinutes").value || 0);
       const ctvMs = Math.round((ctvHours * 60 + ctvMinutes) * 60000);
+      // Ô "Số liệu theo host nhập": giờ live và số liệu chốt theo lựa chọn đang tích trong form.
+      const manualMetrics = reportManualChecked();
+      const hostMs = roleEffectiveMs(s,"host",manualMetrics), supportMs = roleEffectiveMs(s,"support",manualMetrics);
       if(hasCtv){
         if(!ctvId) return toast("Chọn cộng tác viên live ca này");
         if(ctvId === s.hostId) return toast("Cộng tác viên phải khác Host của ca");
         if(!Number.isInteger(ctvHours) || !Number.isInteger(ctvMinutes) || ctvHours < 0 || ctvMinutes < 0 || ctvMinutes > 59) return toast("Giờ live cộng tác viên: số giờ nguyên và số phút từ 0 đến 59");
         if(!ctvMs) return toast("Nhập giờ live của cộng tác viên");
-        if(ctvMs > roleEffectiveMs(s,"host")) return toast(`Giờ live cộng tác viên không được lớn hơn giờ live của Host (${formatDuration(roleEffectiveMs(s,"host"))})`);
+        if(ctvMs > hostMs) return toast(`Giờ live cộng tác viên không được lớn hơn giờ live của Host (${formatDuration(hostMs)})`);
       }
       const ctvAccount = hasCtv ? db.accounts.find(a=>a.id === ctvId) : null;
+      const reportGmv = Number(document.getElementById("reportGMV").value || 0);
+      const sessionMs = Math.max(hostMs, supportMs);
       const newReport = {
-        hostActualMs:roleEffectiveMs(s,"host"),
-        supportActualMs:roleEffectiveMs(s,"support"),
+        hostActualMs:hostMs,
+        supportActualMs:supportMs,
+        manualMetrics,
         gmv:Number(document.getElementById("reportGMV").value || 0),
         orders:Number(document.getElementById("reportOrders").value || 0),
         coins:Number(document.getElementById("reportCoins").value || 0),
@@ -5927,7 +5991,7 @@
         comments:Number(document.getElementById("reportComments").value || 0),
         avgWatch:document.getElementById("reportAvgWatch").value.trim(),
         minigameCost:Number(document.getElementById("reportMinigameCost").value || 0),
-        gmvPerHour:calculateGmvPerHour(s, Number(document.getElementById("reportGMV").value || 0)),
+        gmvPerHour:sessionMs > 0 ? Math.round(reportGmv / (sessionMs / 3600000)) : 0,
         gmvWetWipes:String(s.shop || "").toLowerCase().includes("gooby") ? Number(document.getElementById("reportGmvWetWipes").value || 0) : 0,
         gmvNewbornBox:String(s.shop || "").toLowerCase().includes("gooby") ? Number(document.getElementById("reportGmvNewbornBox").value || 0) : 0,
         campaign:shiftCampaignInfo(s),
